@@ -13,6 +13,8 @@ class AppToast {
   AppToast._();
 
   static OverlayEntry? _entry;
+  static final GlobalKey<_ToastHostState> _hostKey =
+      GlobalKey<_ToastHostState>();
   static Timer? _timer;
 
   static const _titles = <AppToastTone, String>{
@@ -21,6 +23,8 @@ class AppToast {
     AppToastTone.warning: 'Please review',
     AppToastTone.info: 'Updated',
   };
+
+  static const inOut = Duration(milliseconds: 260);
 
   static void show(
     BuildContext context,
@@ -43,7 +47,7 @@ class AppToast {
         HapticFeedback.selectionClick();
     }
 
-    dismiss();
+    _removeNow();
 
     final heading = (title?.trim().isNotEmpty ?? false)
         ? title!.trim()
@@ -57,17 +61,25 @@ class AppToast {
           top: top,
           left: 16,
           right: 16,
-          child: _ToastBanner(
-            tone: tone,
-            title: heading,
-            message: body.isEmpty || body == heading ? null : body,
-            onClose: dismiss,
+          child: IgnorePointer(
+            ignoring: false,
+            child: _ToastHost(
+              key: _hostKey,
+              tone: tone,
+              title: heading,
+              message: body.isEmpty || body == heading ? null : body,
+              onClose: dismiss,
+            ),
           ),
         );
       },
     );
 
     overlay.insert(_entry!);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _hostKey.currentState?.playIn();
+    });
+
     if (duration > Duration.zero) {
       _timer = Timer(duration, dismiss);
     }
@@ -85,8 +97,112 @@ class AppToast {
   static void dismiss() {
     _timer?.cancel();
     _timer = null;
+
+    final host = _hostKey.currentState;
+    if (host == null) {
+      _removeNow();
+      return;
+    }
+
+    host.playOut().whenComplete(_removeNow);
+  }
+
+  static void _removeNow() {
+    _timer?.cancel();
+    _timer = null;
     _entry?.remove();
     _entry = null;
+  }
+}
+
+class _ToastHost extends StatefulWidget {
+  const _ToastHost({
+    super.key,
+    required this.tone,
+    required this.title,
+    required this.message,
+    required this.onClose,
+  });
+
+  final AppToastTone tone;
+  final String title;
+  final String? message;
+  final VoidCallback onClose;
+
+  @override
+  State<_ToastHost> createState() => _ToastHostState();
+}
+
+class _ToastHostState extends State<_ToastHost>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _motion = AnimationController(
+    vsync: this,
+    duration: AppToast.inOut,
+  );
+
+  late final Animation<double> _fade = CurvedAnimation(
+    parent: _motion,
+    curve: Curves.easeOutCubic,
+    reverseCurve: Curves.easeInCubic,
+  );
+
+  late final Animation<Offset> _slide = Tween<Offset>(
+    begin: const Offset(0, -0.28),
+    end: Offset.zero,
+  ).animate(
+    CurvedAnimation(
+      parent: _motion,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    ),
+  );
+
+  late final Animation<double> _scale = Tween<double>(
+    begin: 0.96,
+    end: 1,
+  ).animate(
+    CurvedAnimation(
+      parent: _motion,
+      curve: Curves.easeOutBack,
+      reverseCurve: Curves.easeInCubic,
+    ),
+  );
+
+  void playIn() {
+    if (!mounted) return;
+    _motion.forward(from: 0);
+  }
+
+  Future<void> playOut() async {
+    if (!mounted) return;
+    if (_motion.value == 0) return;
+    await _motion.reverse();
+  }
+
+  @override
+  void dispose() {
+    _motion.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SlideTransition(
+      position: _slide,
+      child: FadeTransition(
+        opacity: _fade,
+        child: ScaleTransition(
+          scale: _scale,
+          alignment: Alignment.topCenter,
+          child: _ToastBanner(
+            tone: widget.tone,
+            title: widget.title,
+            message: widget.message,
+            onClose: widget.onClose,
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -155,6 +271,8 @@ class _ToastBanner extends StatelessWidget {
                       children: [
                         Text(
                           title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
@@ -166,6 +284,8 @@ class _ToastBanner extends StatelessWidget {
                           const SizedBox(height: 2),
                           Text(
                             message!,
+                            maxLines: 4,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 12.5,
                               height: 1.3,

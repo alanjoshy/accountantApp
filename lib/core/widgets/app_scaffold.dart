@@ -1,9 +1,10 @@
-// Page shell with shared bottom nav.
+// Page shell with shared top bar + bottom nav.
 
 import 'package:flutter/material.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../navigation/app_tab.dart';
+import 'app_top_bar.dart';
 import 'bottom_nav.dart';
 
 class AppScaffold extends StatelessWidget {
@@ -22,12 +23,16 @@ class AppScaffold extends StatelessWidget {
   final VoidCallback? onAddPressed;
   final Color? backgroundColor;
 
+  /// Clearance for the dock’s raised + button (extends above the bar).
+  static const _addButtonClearance = 28.0;
+
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
+    final topPad = MediaQuery.paddingOf(context).top + AppTopBar.height;
     final bottomPad = BottomNav.height +
         BottomNav.outerInset +
-        28 +
+        _addButtonClearance +
         MediaQuery.paddingOf(context).bottom;
 
     return Scaffold(
@@ -36,9 +41,15 @@ class AppScaffold extends StatelessWidget {
         children: [
           Positioned.fill(
             child: Padding(
-              padding: EdgeInsets.only(bottom: bottomPad),
+              padding: EdgeInsets.only(top: topPad, bottom: bottomPad),
               child: body,
             ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            child: AppTopBar(tab: tab),
           ),
           Positioned(
             left: 0,

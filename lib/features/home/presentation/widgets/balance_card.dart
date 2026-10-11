@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 
 import '../../../../app/currency/currency_controller.dart';
 import '../../../../app/theme/app_colors.dart';
-import '../../../../app/theme/app_spacing.dart';
 import 'balance_battery.dart';
 import 'streak_fire_badge.dart';
 
@@ -22,11 +21,7 @@ class BalanceCard extends StatefulWidget {
   final double balance;
   final double income;
   final double expense;
-
-  /// Consecutive payment days; 0 until transactions are wired.
   final int paymentStreak;
-
-  /// Month pool for the battery ring. Falls back to a presentation placeholder.
   final double? batteryCapacity;
 
   @override
@@ -36,7 +31,6 @@ class BalanceCard extends StatefulWidget {
 class _BalanceCardState extends State<BalanceCard> {
   bool _visible = false;
 
-  /// Presentation placeholder when income/budgets are not wired yet.
   static const _placeholderCapacity = 10000.0;
 
   String _amount(double value) {
@@ -55,6 +49,7 @@ class _BalanceCardState extends State<BalanceCard> {
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
+    final capacity = _capacity;
 
     return ListenableBuilder(
       listenable: CurrencyController.instance,
@@ -62,7 +57,7 @@ class _BalanceCardState extends State<BalanceCard> {
         return DecoratedBox(
           decoration: BoxDecoration(
             color: colors.surfaceElevated,
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(color: colors.border),
           ),
           child: Stack(
@@ -85,50 +80,28 @@ class _BalanceCardState extends State<BalanceCard> {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.all(AppSpacing.lg),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          child: Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            runSpacing: 4,
                             children: [
-                              Wrap(
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                spacing: 8,
-                                runSpacing: 4,
-                                children: [
-                                  Text(
-                                    'Account balance',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500,
-                                      color: colors.textSecondary,
-                                    ),
-                                  ),
-                                  StreakFireBadge(streak: widget.paymentStreak),
-                                ],
-                              ),
-                              const SizedBox(height: 2),
                               Text(
-                                'View accounts',
+                                'Account balance',
                                 style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: colors.accent,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: colors.textSecondary,
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Cash flow cycle',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: colors.textMuted,
-                                ),
-                              ),
+                              StreakFireBadge(streak: widget.paymentStreak),
                             ],
                           ),
                         ),
@@ -144,45 +117,37 @@ class _BalanceCardState extends State<BalanceCard> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Expanded(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              _amount(widget.balance),
-                              style: TextStyle(
-                                fontSize: 40,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.8,
-                                height: 1,
-                                color: colors.textPrimary,
-                              ),
+                          child: Text(
+                            _amount(widget.balance),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.6,
+                              height: 1,
+                              color: colors.textPrimary,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Align(
-                            alignment: Alignment.centerRight,
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerRight,
-                              child: BalanceBattery(
-                                balance: widget.balance,
-                                capacity: _capacity,
-                                amountsVisible: _visible,
-                                formatAmount: CurrencyController.instance.format,
-                              ),
-                            ),
+                        if (capacity > 0) ...[
+                          const SizedBox(width: 10),
+                          BalanceBattery(
+                            balance: widget.balance,
+                            capacity: capacity,
+                            amountsVisible: _visible,
+                            formatAmount: CurrencyController.instance.format,
+                            compact: true,
                           ),
-                        ),
+                        ],
                       ],
                     ),
-                    const SizedBox(height: AppSpacing.lg),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
@@ -194,7 +159,7 @@ class _BalanceCardState extends State<BalanceCard> {
                             colors: colors,
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: _FlowTile(
                             label: 'Expense',
@@ -237,24 +202,25 @@ class _FlowTile extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colors.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: colors.border),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(icon, size: 14, color: iconColor),
-                const SizedBox(width: 6),
+                Icon(icon, size: 13, color: iconColor),
+                const SizedBox(width: 4),
                 Flexible(
                   child: Text(
                     label,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: FontWeight.w500,
                       color: colors.textSecondary,
                     ),
@@ -262,17 +228,16 @@ class _FlowTile extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 6),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                amount,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: colors.textPrimary,
-                ),
+            const SizedBox(height: 4),
+            Text(
+              amount,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                height: 1.15,
+                color: colors.textPrimary,
               ),
             ),
           ],
@@ -297,14 +262,14 @@ class _IconBtn extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: colors.surfaceHover,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(10),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         child: SizedBox(
-          width: 36,
-          height: 36,
-          child: Icon(icon, size: 18, color: colors.textSecondary),
+          width: 32,
+          height: 32,
+          child: Icon(icon, size: 16, color: colors.textSecondary),
         ),
       ),
     );

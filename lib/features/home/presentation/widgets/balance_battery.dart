@@ -22,15 +22,14 @@ class BalanceBattery extends StatelessWidget {
     required this.capacity,
     this.amountsVisible = true,
     this.formatAmount,
+    this.compact = false,
   });
 
   final double balance;
   final double capacity;
   final bool amountsVisible;
   final String Function(double value)? formatAmount;
-
-  static const _size = 56.0;
-  static const _stroke = 5.5;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -38,6 +37,8 @@ class BalanceBattery extends StatelessWidget {
     final safeCap = capacity > 0 ? capacity : 0.0;
     if (safeCap <= 0) return const SizedBox.shrink();
 
+    final size = compact ? 44.0 : 56.0;
+    final stroke = compact ? 4.5 : 5.5;
     final rawPct = ((balance / safeCap) * 100).round().clamp(0, 100);
     final pct = balance <= 0 ? 0 : rawPct;
     final tone = batteryToneForPct(pct);
@@ -46,34 +47,37 @@ class BalanceBattery extends StatelessWidget {
     final amount = formatAmount ?? (v) => v.round().toString();
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 8 : 10,
+        vertical: compact ? 4 : 6,
+      ),
       decoration: BoxDecoration(
         color: fill.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(compact ? 12 : 16),
         border: Border.all(color: fill.withValues(alpha: 0.25)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(
-            width: _size,
-            height: _size,
+            width: size,
+            height: size,
             child: Stack(
               alignment: Alignment.center,
               children: [
                 CustomPaint(
-                  size: const Size(_size, _size),
+                  size: Size(size, size),
                   painter: _RingPainter(
                     progress: amountsVisible ? pct / 100 : 0,
                     fill: fill,
                     track: fill.withValues(alpha: 0.18),
-                    stroke: _stroke,
+                    stroke: stroke,
                   ),
                 ),
                 Text(
                   amountsVisible ? '$pct%' : '••',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: compact ? 11 : 12,
                     fontWeight: FontWeight.w800,
                     height: 1,
                     fontFeatures: const [FontFeature.tabularFigures()],
@@ -83,9 +87,9 @@ class BalanceBattery extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 10),
+          SizedBox(width: compact ? 8 : 10),
           ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 76),
+            constraints: BoxConstraints(maxWidth: compact ? 64 : 72),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -93,21 +97,21 @@ class BalanceBattery extends StatelessWidget {
                 Text(
                   'LEFT',
                   style: TextStyle(
-                    fontSize: 10,
+                    fontSize: compact ? 9 : 10,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.4,
+                    height: 1.1,
                     color: colors.textMuted,
                   ),
                 ),
                 Text(
-                  amountsVisible
-                      ? amount(math.max(0, balance))
-                      : '•••••',
+                  amountsVisible ? amount(math.max(0, balance)) : '•••••',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: compact ? 11 : 12,
                     fontWeight: FontWeight.w700,
+                    height: 1.2,
                     fontFeatures: const [FontFeature.tabularFigures()],
                     color: textColor,
                   ),
@@ -117,8 +121,9 @@ class BalanceBattery extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 9,
+                    fontSize: compact ? 8 : 9,
                     fontWeight: FontWeight.w500,
+                    height: 1.2,
                     fontFeatures: const [FontFeature.tabularFigures()],
                     color: colors.textMuted,
                   ),

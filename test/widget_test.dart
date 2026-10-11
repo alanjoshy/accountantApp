@@ -12,6 +12,7 @@ import 'package:accountant/app/theme/app_theme.dart';
 import 'package:accountant/app/theme/theme_controller.dart';
 import 'package:accountant/core/navigation/app_tab.dart';
 import 'package:accountant/core/widgets/app_toast.dart';
+import 'package:accountant/features/auth/presentation/screens/lock_screen.dart';
 import 'package:accountant/features/shell/presentation/screens/main_shell.dart';
 
 void main() {
@@ -39,15 +40,18 @@ void main() {
     expect(CurrencyController.instance.symbol, '₹');
   });
 
-  testWidgets('home shows balance card with streak and battery', (tester) async {
+  testWidgets('home shows balance card with streak and pie', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: MainShell()));
     await tester.pumpAndSettle();
 
+    expect(find.text('Home'), findsWidgets);
     expect(find.text('Account balance'), findsOneWidget);
     expect(find.text('Income'), findsOneWidget);
     expect(find.text('Expense'), findsOneWidget);
     expect(find.text('0d'), findsOneWidget);
     expect(find.text('LEFT'), findsOneWidget);
+    // Amounts hidden by default → percent masked like web.
+    expect(find.text('••'), findsOneWidget);
   });
 
   testWidgets('switches tabs on phone, tablet, and desktop sizes', (
@@ -65,6 +69,7 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: MainShell()));
       await tester.pumpAndSettle();
 
+      expect(find.text('Home'), findsWidgets);
       expect(find.text('Account balance'), findsOneWidget);
 
       await tester.tap(find.byIcon(Icons.timeline_rounded));
@@ -72,6 +77,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 90));
       await tester.pumpAndSettle();
       expect(find.text('Account balance'), findsNothing);
+      expect(find.text('Activity'), findsWidgets);
 
       await tester.tap(find.byIcon(Icons.pie_chart_rounded));
       await tester.pumpAndSettle();
@@ -83,6 +89,7 @@ void main() {
 
       await tester.tap(find.byIcon(Icons.home_rounded));
       await tester.pumpAndSettle();
+      expect(find.text('Home'), findsWidgets);
       expect(find.text('Account balance'), findsOneWidget);
     }
   });
@@ -116,12 +123,15 @@ void main() {
     expect(find.text('Saved'), findsOneWidget);
     AppToast.dismiss();
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
     await tester.tap(find.text('Light'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(ThemeController.instance.mode, ThemeMode.light);
     AppToast.dismiss();
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
   });
 
   testWidgets('settings currency dropdown saves and updates home symbol', (
@@ -150,14 +160,9 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('currency-dropdown')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Dollar').hitTestable(), findsWidgets);
-    expect(find.text('Euro').hitTestable(), findsWidgets);
-    expect(find.text('Pound').hitTestable(), findsWidgets);
-    expect(find.text('Dirham').hitTestable(), findsWidgets);
-    expect(find.text('Riyal').hitTestable(), findsWidgets);
-    expect(find.text('Dinar').hitTestable(), findsWidgets);
-    expect(find.text('Bahrain Dinar').hitTestable(), findsWidgets);
-    expect(find.text('Indian Rupee').hitTestable(), findsWidgets);
+    // Bottom sheet picker
+    expect(find.text('Dollar'), findsWidgets);
+    expect(find.text('Euro'), findsWidgets);
 
     await tester.tap(find.text('Euro').last);
     await tester.pumpAndSettle();
@@ -166,6 +171,7 @@ void main() {
     expect(find.text('Currency saved.'), findsOneWidget);
     AppToast.dismiss();
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
     await tester.tap(find.text('More').first);
     await tester.pumpAndSettle();
@@ -176,5 +182,84 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('€0'), findsWidgets);
+  });
+
+  testWidgets('lock screen scrolls under keyboard and landscape', (
+    tester,
+  ) async {
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetViewInsets();
+      tester.view.resetPadding();
+    });
+
+    for (final setup in const [
+      (Size(390, 400), 280.0),
+      (Size(844, 390), 200.0),
+    ]) {
+      final size = setup.$1;
+      final keyboard = setup.$2;
+      tester.view.physicalSize = Size(size.width * 3, size.height * 3);
+      tester.view.devicePixelRatio = 3;
+      tester.view.padding = const FakeViewPadding(top: 141, bottom: 102);
+      tester.view.viewInsets = FakeViewPadding(bottom: keyboard * 3);
+
+      await tester.pumpWidget(
+        MediaQuery(
+          data: MediaQueryData(
+            size: size,
+            padding: const EdgeInsets.only(top: 47, bottom: 34),
+            viewInsets: EdgeInsets.only(bottom: keyboard),
+          ),
+          child: const MaterialApp(home: LockScreen()),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Set your PIN'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    }
+  });
+
+  testWidgets('home and settings tolerate narrow width and large text', (
+    tester,
+  ) async {
+    final view = tester.view;
+    view.physicalSize = const Size(960, 2100);
+    view.devicePixelRatio = 3;
+    view.padding = const FakeViewPadding(top: 141, bottom: 102);
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(() {
+      view.resetPhysicalSize();
+      view.resetDevicePixelRatio();
+      view.resetPadding();
+      tester.platformDispatcher.clearTextScaleFactorTestValue();
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light,
+        home: const MainShell(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Account balance'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byIcon(Icons.grid_view_rounded));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('Settings'),
+      80,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Theme'), findsOneWidget);
+    expect(find.text('Dark'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

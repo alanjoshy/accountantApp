@@ -14,56 +14,55 @@ class MoreScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
 
-    return SafeArea(
-      bottom: false,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.md,
-          AppSpacing.md,
-          AppSpacing.md,
-          AppSpacing.lg,
-        ),
-        children: [
-          Text(
-            'More',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w700,
-              color: colors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            'Money tools, tags, and app settings',
-            style: TextStyle(fontSize: 14, color: colors.textMuted),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Text(
-            'APP',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.6,
-              color: colors.textMuted,
-            ),
-          ),
-          const SizedBox(height: 8),
-          _MoreRow(
-            icon: Icons.settings_rounded,
-            title: 'Settings',
-            subtitle: 'Appearance, security, and more',
-            colors: colors,
-            onTap: () {
-              HapticFeedback.mediumImpact();
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const SettingsScreen(),
-                ),
-              );
-            },
-          ),
-        ],
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.lg,
       ),
+      children: [
+        Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Money tools, tags, and app settings',
+                  style: TextStyle(fontSize: 14, color: colors.textMuted),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  'APP',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.6,
+                    color: colors.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _MoreRow(
+                  icon: Icons.settings_rounded,
+                  title: 'Settings',
+                  subtitle: 'Appearance, security, and more',
+                  colors: colors,
+                  onTap: () {
+                    HapticFeedback.mediumImpact();
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const SettingsScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -118,6 +117,8 @@ class _MoreRow extends StatelessWidget {
                   children: [
                     Text(
                       title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
@@ -127,6 +128,8 @@ class _MoreRow extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
                         color: colors.textMuted,

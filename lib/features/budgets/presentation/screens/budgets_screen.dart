@@ -11,16 +11,12 @@ class BudgetsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
 
-    return SafeArea(
-      bottom: false,
-      child: Center(
-        child: Text(
-          'Budgets',
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w700,
-            color: colors.textPrimary,
-          ),
+    return Center(
+      child: Text(
+        'No budgets yet',
+        style: TextStyle(
+          fontSize: 15,
+          color: colors.textMuted,
         ),
       ),
     );

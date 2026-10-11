@@ -29,175 +29,278 @@ class SettingsScreen extends StatelessWidget {
           ),
           children: [
             Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () {
-                  HapticFeedback.mediumImpact();
-                  Navigator.of(context).pop();
-                },
-                icon: Icon(
-                  Icons.chevron_left_rounded,
-                  size: 20,
-                  color: colors.accent,
-                ),
-                label: Text(
-                  'More',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: colors.accent,
-                  ),
-                ),
-                style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  foregroundColor: colors.accent,
-                ),
-              ),
-            ),
-            Text(
-              'Settings',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w700,
-                color: colors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            _SectionLabel('General', colors),
-            const SizedBox(height: 6),
-            _SettingsPanel(
-              colors: colors,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final control = ListenableBuilder(
-                      listenable: ThemeController.instance,
-                      builder: (context, _) {
-                        return _ThemeSegmented(
-                          value: ThemeController.instance.mode,
-                          colors: colors,
-                          onChanged: (mode) async {
-                            if (mode == ThemeController.instance.mode) return;
-                            HapticFeedback.selectionClick();
-                            await ThemeController.instance.setMode(mode);
-                            if (!context.mounted) return;
-                            AppToast.success(context, 'Theme saved.');
-                          },
-                        );
-                      },
-                    );
-                    final label = Text(
-                      'Theme',
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () {
+                          HapticFeedback.mediumImpact();
+                          Navigator.of(context).pop();
+                        },
+                        icon: Icon(
+                          Icons.chevron_left_rounded,
+                          size: 20,
+                          color: colors.accent,
+                        ),
+                        label: Text(
+                          'More',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: colors.accent,
+                          ),
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          foregroundColor: colors.accent,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      'Settings',
                       style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
                         color: colors.textPrimary,
                       ),
-                    );
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    _SectionLabel('General', colors),
+                    const SizedBox(height: 6),
+                    _SettingsPanel(
+                      colors: colors,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final control = ListenableBuilder(
+                              listenable: ThemeController.instance,
+                              builder: (context, _) {
+                                return _ThemeSegmented(
+                                  value: ThemeController.instance.mode,
+                                  colors: colors,
+                                  onChanged: (mode) async {
+                                    if (mode ==
+                                        ThemeController.instance.mode) {
+                                      return;
+                                    }
+                                    HapticFeedback.selectionClick();
+                                    await ThemeController.instance
+                                        .setMode(mode);
+                                    if (!context.mounted) return;
+                                    AppToast.success(context, 'Theme saved.');
+                                  },
+                                );
+                              },
+                            );
+                            final label = Text(
+                              'Theme',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: colors.textPrimary,
+                              ),
+                            );
 
-                    if (constraints.maxWidth < 340) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          label,
-                          const SizedBox(height: 10),
-                          control,
-                        ],
-                      );
-                    }
+                            if (constraints.maxWidth < 340) {
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  label,
+                                  const SizedBox(height: 10),
+                                  control,
+                                ],
+                              );
+                            }
 
-                    return Row(
-                      children: [
-                        Expanded(child: label),
-                        control,
-                      ],
-                    );
-                  },
+                            return Row(
+                              children: [
+                                Expanded(child: label),
+                                Flexible(child: control),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    _SectionLabel('Currency', colors),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Used as the money icon across the app.',
+                      style: TextStyle(fontSize: 12, color: colors.textMuted),
+                    ),
+                    const SizedBox(height: 8),
+                    ListenableBuilder(
+                      listenable: CurrencyController.instance,
+                      builder: (context, _) {
+                        final selected = CurrencyController.instance.currency;
+                        return _SettingsPanel(
+                          colors: colors,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                            child: _CurrencyDropdown(
+                              key: const ValueKey('currency-dropdown'),
+                              value: selected,
+                              colors: colors,
+                              onChanged: (value) async {
+                                if (value == selected) return;
+                                HapticFeedback.selectionClick();
+                                await CurrencyController.instance
+                                    .setCurrency(value);
+                                if (!context.mounted) return;
+                                AppToast.success(context, 'Currency saved.');
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ),
             ),
-            const SizedBox(height: AppSpacing.lg),
-            _SectionLabel('Currency', colors),
-            const SizedBox(height: 4),
-            Text(
-              'Used as the money icon across the app.',
-              style: TextStyle(fontSize: 12, color: colors.textMuted),
-            ),
-            const SizedBox(height: 8),
-            ListenableBuilder(
-              listenable: CurrencyController.instance,
-              builder: (context, _) {
-                final selected = CurrencyController.instance.currency;
-                return _SettingsPanel(
-                  colors: colors,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    child: DropdownButtonFormField<AppCurrency>(
-                      key: const ValueKey('currency-dropdown'),
-                      initialValue: selected,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: colors.surfaceHover,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: colors.border),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: colors.border),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: colors.accent),
-                        ),
-                      ),
-                      dropdownColor: colors.surfaceElevated,
-                      icon: Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        color: colors.textSecondary,
-                      ),
-                      selectedItemBuilder: (context) {
-                        return [
-                          for (final currency in AppCurrency.values)
-                            _CurrencyOption(
-                              currency: currency,
-                              colors: colors,
-                              dense: true,
-                            ),
-                        ];
-                      },
-                      items: [
-                        for (final currency in AppCurrency.values)
-                          DropdownMenuItem(
-                            value: currency,
-                            child: _CurrencyOption(
-                              currency: currency,
-                              colors: colors,
-                            ),
-                          ),
-                      ],
-                      onChanged: (value) async {
-                        if (value == null || value == selected) return;
-                        HapticFeedback.selectionClick();
-                        await CurrencyController.instance.setCurrency(value);
-                        if (!context.mounted) return;
-                        AppToast.success(context, 'Currency saved.');
-                      },
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CurrencyDropdown extends StatelessWidget {
+  const _CurrencyDropdown({
+    super.key,
+    required this.value,
+    required this.colors,
+    required this.onChanged,
+  });
+
+  final AppCurrency value;
+  final AppPalette colors;
+  final ValueChanged<AppCurrency> onChanged;
+
+  static List<AppCurrency> get _options => [
+        AppCurrency.inr,
+        ...AppCurrency.values.where((c) => c != AppCurrency.inr),
+      ];
+
+  Future<void> _pick(BuildContext context) async {
+    final picked = await showModalBottomSheet<AppCurrency>(
+      context: context,
+      backgroundColor: colors.surfaceElevated,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: colors.border,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                child: Text(
+                  'Currency',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: colors.textPrimary,
+                  ),
+                ),
+              ),
+              for (final currency in _options)
+                ListTile(
+                  leading: Text(
+                    currency.flag,
+                    style: const TextStyle(fontSize: 22),
+                  ),
+                  title: Text(
+                    currency.label,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: colors.textPrimary,
                     ),
                   ),
-                );
-              },
-            ),
-          ],
+                  subtitle: Text(
+                    '${currency.country} · ${currency.code}',
+                    style: TextStyle(fontSize: 12, color: colors.textMuted),
+                  ),
+                  trailing: Text(
+                    currency.symbol,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: currency == value
+                          ? colors.accent
+                          : colors.textSecondary,
+                    ),
+                  ),
+                  selected: currency == value,
+                  selectedTileColor: colors.accentMuted,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  onTap: () => Navigator.pop(sheetContext, currency),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (picked != null) onChanged(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: colors.surfaceHover,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: () => _pick(context),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: colors.border),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: _CurrencyOption(
+                  currency: value,
+                  colors: colors,
+                  dense: true,
+                ),
+              ),
+              Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: colors.textSecondary,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -318,15 +421,16 @@ class _ThemeSegmented extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(2),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
             for (final (mode, label, icon) in _options)
-              _Segment(
-                label: label,
-                icon: icon,
-                active: value == mode,
-                colors: colors,
-                onTap: () => onChanged(mode),
+              Expanded(
+                child: _Segment(
+                  label: label,
+                  icon: icon,
+                  active: value == mode,
+                  colors: colors,
+                  onTap: () => onChanged(mode),
+                ),
               ),
           ],
         ),
@@ -359,29 +463,35 @@ class _Segment extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(10),
             border: active ? Border.all(color: colors.border) : null,
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 13,
-                color: active ? colors.textPrimary : colors.textMuted,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: 13,
                   color: active ? colors.textPrimary : colors.textMuted,
                 ),
-              ),
-            ],
+                const SizedBox(width: 4),
+                Text(
+                  label,
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: active ? colors.textPrimary : colors.textMuted,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

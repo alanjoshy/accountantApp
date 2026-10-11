@@ -145,61 +145,77 @@ class _LockScreenState extends State<LockScreen> {
 
     return Scaffold(
       backgroundColor: colors.background,
+      // Keyboard shortens the body; scroll instead of overflowing.
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 384),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: colors.accentMuted,
-                      borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-                      border: Border.all(
-                        color: colors.accent.withValues(alpha: 0.2),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.lg,
+                      vertical: AppSpacing.md,
+                    ),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 384),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              color: colors.accentMuted,
+                              borderRadius:
+                                  BorderRadius.circular(AppSpacing.radiusLg),
+                              border: Border.all(
+                                color: colors.accent.withValues(alpha: 0.2),
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.lock_rounded,
+                              size: 24,
+                              color: colors.accent,
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.md),
+                          Text(
+                            _title,
+                            textAlign: TextAlign.center,
+                            style: AppTextStyles.lockTitle.copyWith(
+                              color: colors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _subtitle,
+                            textAlign: TextAlign.center,
+                            style: AppTextStyles.lockSubtitle.copyWith(
+                              color: colors.textMuted,
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.xl),
+                          PinEntry(
+                            value: _pin,
+                            onChanged: _onPinChanged,
+                            disabled: _busy,
+                            error: _error.isNotEmpty,
+                            errorMessage: _error.isEmpty ? null : _error,
+                            hint: _hint,
+                            autoFocus: true,
+                          ),
+                        ],
                       ),
                     ),
-                    child: Icon(
-                      Icons.lock_rounded,
-                      size: 24,
-                      color: colors.accent,
-                    ),
                   ),
-                  const SizedBox(height: AppSpacing.md),
-                  Text(
-                    _title,
-                    textAlign: TextAlign.center,
-                    style: AppTextStyles.lockTitle.copyWith(
-                      color: colors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _subtitle,
-                    textAlign: TextAlign.center,
-                    style: AppTextStyles.lockSubtitle.copyWith(
-                      color: colors.textMuted,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-                  PinEntry(
-                    value: _pin,
-                    onChanged: _onPinChanged,
-                    disabled: _busy,
-                    error: _error.isNotEmpty,
-                    errorMessage: _error.isEmpty ? null : _error,
-                    hint: _hint,
-                    autoFocus: true,
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         ),
       ),
     );
