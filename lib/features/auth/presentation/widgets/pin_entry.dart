@@ -68,6 +68,8 @@ class _PinEntryState extends State<PinEntry> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+
     return Column(
       children: [
         SizedBox(
@@ -83,15 +85,15 @@ class _PinEntryState extends State<PinEntry> {
                   final Color fill;
                   if (widget.error) {
                     border = filled
-                        ? AppColors.error
-                        : AppColors.error.withValues(alpha: 0.5);
-                    fill = filled ? AppColors.error : Colors.transparent;
+                        ? colors.error
+                        : colors.error.withValues(alpha: 0.5);
+                    fill = filled ? colors.error : Colors.transparent;
                   } else if (filled) {
-                    border = AppColors.accent;
-                    fill = AppColors.accent;
+                    border = colors.accent;
+                    fill = colors.accent;
                   } else {
-                    border = AppColors.border;
-                    fill = AppColors.surfaceHover;
+                    border = colors.border;
+                    fill = colors.surfaceHover;
                   }
 
                   return Container(
@@ -132,9 +134,15 @@ class _PinEntryState extends State<PinEntry> {
         ),
         const SizedBox(height: 12),
         if (widget.errorMessage != null)
-          Text(widget.errorMessage!, style: AppTextStyles.error)
+          Text(
+            widget.errorMessage!,
+            style: AppTextStyles.error.copyWith(color: colors.error),
+          )
         else if (widget.hint != null)
-          Text(widget.hint!, style: AppTextStyles.hint),
+          Text(
+            widget.hint!,
+            style: AppTextStyles.hint.copyWith(color: colors.textMuted),
+          ),
       ],
     );
   }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/navigation/app_tab.dart';
 import '../../../../core/widgets/app_scaffold.dart';
+import '../../../../core/widgets/app_toast.dart';
 import '../../../activity/presentation/screens/activity_screen.dart';
 import '../../../budgets/presentation/screens/budgets_screen.dart';
 import '../../../home/presentation/screens/home_screen.dart';
@@ -79,8 +80,10 @@ class _MainShellState extends State<MainShell>
       tab: _tab,
       onTabSelected: _select,
       onAddPressed: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Add transaction coming soon.')),
+        AppToast.show(
+          context,
+          'Add transaction coming soon.',
+          tone: AppToastTone.info,
         );
       },
       body: ClipRect(

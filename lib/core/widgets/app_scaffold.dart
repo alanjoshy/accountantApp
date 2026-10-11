@@ -24,13 +24,14 @@ class AppScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     final bottomPad = BottomNav.height +
         BottomNav.outerInset +
         28 +
         MediaQuery.paddingOf(context).bottom;
 
     return Scaffold(
-      backgroundColor: backgroundColor ?? AppColors.background,
+      backgroundColor: backgroundColor ?? colors.background,
       body: Stack(
         children: [
           Positioned.fill(

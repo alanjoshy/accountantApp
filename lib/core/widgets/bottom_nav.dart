@@ -62,6 +62,7 @@ class _BottomNavState extends State<BottomNav>
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     final bottom = MediaQuery.paddingOf(context).bottom;
 
     return Padding(
@@ -80,14 +81,18 @@ class _BottomNavState extends State<BottomNav>
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: AppColors.surface.withValues(alpha: 0.92),
+                  color: colors.surfaceElevated.withValues(alpha: 0.94),
                   borderRadius: BorderRadius.circular(32),
                   border: Border.all(
-                    color: AppColors.border.withValues(alpha: 0.7),
+                    color: colors.border.withValues(alpha: 0.7),
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.12),
+                      color: Colors.black.withValues(
+                        alpha: Theme.of(context).brightness == Brightness.dark
+                            ? 0.35
+                            : 0.12,
+                      ),
                       blurRadius: 32,
                       offset: const Offset(0, 10),
                     ),
@@ -111,7 +116,10 @@ class _BottomNavState extends State<BottomNav>
                                         .transform(_motion.value);
                                     final rect = Rect.lerp(_from, _to, t)!;
                                     return CustomPaint(
-                                      painter: _PillPainter(rect),
+                                      painter: _PillPainter(
+                                        rect,
+                                        colors.accentMuted,
+                                      ),
                                     );
                                   },
                                 ),
@@ -128,11 +136,13 @@ class _BottomNavState extends State<BottomNav>
                                       tab: AppTab.home,
                                       icon: Icons.home_rounded,
                                       label: 'Home',
+                                      colors: colors,
                                     ),
                                     _item(
                                       tab: AppTab.activity,
                                       icon: Icons.timeline_rounded,
                                       label: 'Activity',
+                                      colors: colors,
                                     ),
                                   ],
                                 ),
@@ -147,11 +157,13 @@ class _BottomNavState extends State<BottomNav>
                                       tab: AppTab.budgets,
                                       icon: Icons.pie_chart_rounded,
                                       label: 'Budgets',
+                                      colors: colors,
                                     ),
                                     _item(
                                       tab: AppTab.more,
                                       icon: Icons.grid_view_rounded,
                                       label: 'More',
+                                      colors: colors,
                                     ),
                                   ],
                                 ),
@@ -176,12 +188,12 @@ class _BottomNavState extends State<BottomNav>
                   width: 56,
                   height: 56,
                   decoration: BoxDecoration(
-                    color: AppColors.accent,
+                    color: colors.accent,
                     shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.background, width: 5),
+                    border: Border.all(color: colors.background, width: 5),
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.accent.withValues(alpha: 0.45),
+                        color: colors.accent.withValues(alpha: 0.45),
                         blurRadius: 20,
                         offset: const Offset(0, 8),
                       ),
@@ -220,6 +232,7 @@ class _BottomNavState extends State<BottomNav>
     required AppTab tab,
     required IconData icon,
     required String label,
+    required AppPalette colors,
   }) {
     return Flexible(
       child: _NavItem(
@@ -228,6 +241,7 @@ class _BottomNavState extends State<BottomNav>
         label: label,
         active: widget.current == tab,
         showFill: _from == null,
+        colors: colors,
         onTap: () => _select(tab),
       ),
     );
@@ -293,21 +307,22 @@ class _BottomNavState extends State<BottomNav>
 }
 
 class _PillPainter extends CustomPainter {
-  const _PillPainter(this.rect);
+  const _PillPainter(this.rect, this.color);
 
   final Rect rect;
+  final Color color;
 
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawRRect(
       RRect.fromRectAndRadius(rect, const Radius.circular(18)),
-      Paint()..color = AppColors.accentMuted,
+      Paint()..color = color,
     );
   }
 
   @override
   bool shouldRepaint(covariant _PillPainter oldDelegate) =>
-      oldDelegate.rect != rect;
+      oldDelegate.rect != rect || oldDelegate.color != color;
 }
 
 class _NavItem extends StatelessWidget {
@@ -317,6 +332,7 @@ class _NavItem extends StatelessWidget {
     required this.label,
     required this.active,
     required this.showFill,
+    required this.colors,
     required this.onTap,
   });
 
@@ -325,12 +341,13 @@ class _NavItem extends StatelessWidget {
   final String label;
   final bool active;
   final bool showFill;
+  final AppPalette colors;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final reduce = MediaQuery.disableAnimationsOf(context);
-    final target = active ? AppColors.accent : AppColors.textMuted;
+    final target = active ? colors.accent : colors.textMuted;
 
     return InkWell(
       onTap: onTap,
@@ -340,9 +357,7 @@ class _NavItem extends StatelessWidget {
         fit: BoxFit.scaleDown,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: active && showFill
-                ? AppColors.accentMuted
-                : Colors.transparent,
+            color: active && showFill ? colors.accentMuted : Colors.transparent,
             borderRadius: BorderRadius.circular(18),
           ),
           child: Padding(

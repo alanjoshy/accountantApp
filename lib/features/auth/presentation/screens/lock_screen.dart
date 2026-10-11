@@ -141,8 +141,10 @@ class _LockScreenState extends State<LockScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: colors.background,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -156,29 +158,33 @@ class _LockScreenState extends State<LockScreen> {
                     width: 56,
                     height: 56,
                     decoration: BoxDecoration(
-                      color: AppColors.accentMuted,
+                      color: colors.accentMuted,
                       borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
                       border: Border.all(
-                        color: AppColors.accent.withValues(alpha: 0.2),
+                        color: colors.accent.withValues(alpha: 0.2),
                       ),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.lock_rounded,
                       size: 24,
-                      color: AppColors.accent,
+                      color: colors.accent,
                     ),
                   ),
                   const SizedBox(height: AppSpacing.md),
                   Text(
                     _title,
                     textAlign: TextAlign.center,
-                    style: AppTextStyles.lockTitle,
+                    style: AppTextStyles.lockTitle.copyWith(
+                      color: colors.textPrimary,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     _subtitle,
                     textAlign: TextAlign.center,
-                    style: AppTextStyles.lockSubtitle,
+                    style: AppTextStyles.lockSubtitle.copyWith(
+                      color: colors.textMuted,
+                    ),
                   ),
                   const SizedBox(height: AppSpacing.xl),
                   PinEntry(
