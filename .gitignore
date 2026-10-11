@@ -59,3 +59,4 @@ app.*.map.json
 .env
 .env.*
 !.env.example
+remember.md 

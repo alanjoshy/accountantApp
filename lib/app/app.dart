@@ -1,3 +1,5 @@
+// Root MaterialApp.
+
 import 'package:flutter/material.dart';
 
 import 'router.dart';
@@ -12,8 +14,10 @@ class AccountantApp extends StatelessWidget {
       title: 'Accountant',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
-      initialRoute: AppRouter.signIn,
-      routes: AppRouter.routes,
+      darkTheme: AppTheme.dark,
+      themeMode: ThemeMode.system,
+      initialRoute: AppRouter.lock,
+      onGenerateRoute: AppRouter.onGenerateRoute,
     );
   }
 }

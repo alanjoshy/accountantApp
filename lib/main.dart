@@ -1,7 +1,12 @@
-import 'package:flutter/material.dart';
+// App entry.
+
+import 'package:flutter/widgets.dart';
 
 import 'app/app.dart';
+import 'app/bootstrap.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await bootstrap();
   runApp(const AccountantApp());
 }
