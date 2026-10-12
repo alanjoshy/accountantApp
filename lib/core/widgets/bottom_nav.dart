@@ -1,5 +1,7 @@
 // Floating dock bottom bar (web BottomNav).
 
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -18,9 +20,22 @@ class BottomNav extends StatefulWidget {
   final ValueChanged<AppTab> onTabSelected;
   final VoidCallback? onAddPressed;
 
-  static const height = 72.0;
+  static const height = 64.0;
   static const outerInset = 16.0;
+  /// Raised + button peeks above the bar (Positioned top: -20).
+  static const addClearance = 22.0;
   static const motion = Duration(milliseconds: 180);
+
+  /// Gap under the dock — matches web `max(12px, safe-area)`.
+  static double bottomGap(BuildContext context) {
+    final safe = MediaQuery.paddingOf(context).bottom;
+    return safe > 0 ? safe : 12.0;
+  }
+
+  /// Space content should leave so the dock doesn’t cover it.
+  static double contentInset(BuildContext context) {
+    return height + bottomGap(context) + addClearance;
+  }
 
   @override
   State<BottomNav> createState() => _BottomNavState();
@@ -63,14 +78,15 @@ class _BottomNavState extends State<BottomNav>
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
-    final bottom = MediaQuery.paddingOf(context).bottom;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final radius = BorderRadius.circular(32);
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
         BottomNav.outerInset,
         0,
         BottomNav.outerInset,
-        bottom > 0 ? bottom : 12,
+        BottomNav.bottomGap(context),
       ),
       child: SizedBox(
         height: BottomNav.height,
@@ -81,116 +97,131 @@ class _BottomNavState extends State<BottomNav>
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: colors.surfaceElevated.withValues(alpha: 0.94),
-                  borderRadius: BorderRadius.circular(32),
-                  border: Border.all(
-                    color: colors.border.withValues(alpha: 0.7),
-                  ),
+                  borderRadius: radius,
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(
-                        alpha: Theme.of(context).brightness == Brightness.dark
-                            ? 0.35
-                            : 0.12,
+                        alpha: dark ? 0.35 : 0.12,
                       ),
                       blurRadius: 32,
                       offset: const Offset(0, 10),
                     ),
                   ],
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      _scheduleMotion(constraints.maxWidth);
-                      return Stack(
-                        key: _stackKey,
-                        children: [
-                          if (_from != null && _to != null)
-                            Positioned.fill(
-                              child: IgnorePointer(
-                                child: AnimatedBuilder(
-                                  animation: _motion,
-                                  builder: (context, _) {
-                                    final t = Curves.easeOutCubic
-                                        .transform(_motion.value);
-                                    final rect = Rect.lerp(_from, _to, t)!;
-                                    return CustomPaint(
-                                      painter: _PillPainter(
-                                        rect,
-                                        colors.accentMuted,
+                child: ClipRRect(
+                  borderRadius: radius,
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: colors.surfaceElevated.withValues(
+                          alpha: dark ? 0.55 : 0.72,
+                        ),
+                        borderRadius: radius,
+                        border: Border.all(
+                          color: colors.border.withValues(alpha: 0.7),
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 6,
+                        ),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            _scheduleMotion(constraints.maxWidth);
+                            return Stack(
+                              key: _stackKey,
+                              children: [
+                                if (_from != null && _to != null)
+                                  Positioned.fill(
+                                    child: IgnorePointer(
+                                      child: AnimatedBuilder(
+                                        animation: _motion,
+                                        builder: (context, _) {
+                                          final t = Curves.easeOutCubic
+                                              .transform(_motion.value);
+                                          final rect =
+                                              Rect.lerp(_from, _to, t)!;
+                                          return CustomPaint(
+                                            painter: _PillPainter(
+                                              rect,
+                                              colors.accentMuted,
+                                            ),
+                                          );
+                                        },
                                       ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceAround,
-                                  children: [
-                                    _item(
-                                      tab: AppTab.home,
-                                      icon: Icons.home_rounded,
-                                      label: 'Home',
-                                      colors: colors,
                                     ),
-                                    _item(
-                                      tab: AppTab.activity,
-                                      icon: Icons.timeline_rounded,
-                                      label: 'Activity',
-                                      colors: colors,
+                                  ),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceAround,
+                                        children: [
+                                          _item(
+                                            tab: AppTab.home,
+                                            icon: Icons.home_rounded,
+                                            label: 'Home',
+                                            colors: colors,
+                                          ),
+                                          _item(
+                                            tab: AppTab.activity,
+                                            icon: Icons.timeline_rounded,
+                                            label: 'Activity',
+                                            colors: colors,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 56),
+                                    Expanded(
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceAround,
+                                        children: [
+                                          _item(
+                                            tab: AppTab.budgets,
+                                            icon: Icons.pie_chart_rounded,
+                                            label: 'Budgets',
+                                            colors: colors,
+                                          ),
+                                          _item(
+                                            tab: AppTab.more,
+                                            icon: Icons.grid_view_rounded,
+                                            label: 'More',
+                                            colors: colors,
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ],
                                 ),
-                              ),
-                              const SizedBox(width: 56),
-                              Expanded(
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceAround,
-                                  children: [
-                                    _item(
-                                      tab: AppTab.budgets,
-                                      icon: Icons.pie_chart_rounded,
-                                      label: 'Budgets',
-                                      colors: colors,
-                                    ),
-                                    _item(
-                                      tab: AppTab.more,
-                                      icon: Icons.grid_view_rounded,
-                                      label: 'More',
-                                      colors: colors,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      );
-                    },
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
             Positioned(
-              top: -22,
+              top: -20,
               child: GestureDetector(
                 onTap: () {
                   HapticFeedback.heavyImpact();
                   widget.onAddPressed?.call();
                 },
                 child: Container(
-                  width: 56,
-                  height: 56,
+                  width: 52,
+                  height: 52,
                   decoration: BoxDecoration(
                     color: colors.accent,
                     shape: BoxShape.circle,
-                    border: Border.all(color: colors.background, width: 5),
+                    border: Border.all(color: colors.background, width: 4),
                     boxShadow: [
                       BoxShadow(
                         color: colors.accent.withValues(alpha: 0.45),
@@ -202,7 +233,7 @@ class _BottomNavState extends State<BottomNav>
                   child: const Icon(
                     Icons.add_rounded,
                     color: AppColors.white,
-                    size: 28,
+                    size: 26,
                   ),
                 ),
               ),

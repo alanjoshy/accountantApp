@@ -14,7 +14,17 @@ import '../../domain/pin_crypto.dart';
 import '../widgets/pin_entry.dart';
 
 class LockScreen extends StatefulWidget {
-  const LockScreen({super.key});
+  const LockScreen({
+    super.key,
+    this.hasPin,
+    this.verifyPin,
+    this.savePin,
+  });
+
+  /// Optional seams for tests — defaults to [AppLockStore].
+  final bool Function()? hasPin;
+  final bool Function(String pin)? verifyPin;
+  final Future<void> Function(String pin)? savePin;
 
   @override
   State<LockScreen> createState() => _LockScreenState();
@@ -30,10 +40,18 @@ class _LockScreenState extends State<LockScreen> {
   Timer? _verifyTimer;
   bool _verifying = false;
 
+  bool get _hasPin => widget.hasPin?.call() ?? AppLockStore.hasPin;
+
+  bool _verify(String pin) =>
+      widget.verifyPin?.call(pin) ?? AppLockStore.verify(pin);
+
+  Future<void> _save(String pin) =>
+      widget.savePin?.call(pin) ?? AppLockStore.setPin(pin);
+
   @override
   void initState() {
     super.initState();
-    _setupMode = !AppLockStore.hasPin;
+    _setupMode = !_hasPin;
   }
 
   @override
@@ -90,7 +108,7 @@ class _LockScreenState extends State<LockScreen> {
         return;
       }
       setState(() => _busy = true);
-      await AppLockStore.setPin(next);
+      await _save(next);
       if (!mounted) return;
       HapticFeedback.mediumImpact();
       Navigator.of(context).pushReplacementNamed(AppRouter.home);
@@ -102,7 +120,7 @@ class _LockScreenState extends State<LockScreen> {
     _verifying = true;
     setState(() => _busy = true);
 
-    final ok = AppLockStore.verify(pin);
+    final ok = _verify(pin);
     if (!mounted) return;
 
     if (ok) {

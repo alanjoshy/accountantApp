@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_spacing.dart';
+import '../../../jars/presentation/screens/jar_screen.dart';
 import 'settings_screen.dart';
 
 class MoreScreen extends StatelessWidget {
@@ -14,12 +15,13 @@ class MoreScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
 
+    final bottom = MediaQuery.paddingOf(context).bottom;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(
+      padding: EdgeInsets.fromLTRB(
         AppSpacing.md,
         AppSpacing.md,
         AppSpacing.md,
-        AppSpacing.lg,
+        AppSpacing.lg + bottom,
       ),
       children: [
         Align(
@@ -34,6 +36,31 @@ class MoreScreen extends StatelessWidget {
                   style: TextStyle(fontSize: 14, color: colors.textMuted),
                 ),
                 const SizedBox(height: AppSpacing.md),
+                Text(
+                  'MONEY',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.6,
+                    color: colors.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _MoreRow(
+                  icon: Icons.archive_rounded,
+                  title: 'Jar',
+                  subtitle: 'Savings goals and auto-transfers',
+                  colors: colors,
+                  onTap: () {
+                    HapticFeedback.mediumImpact();
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const JarScreen(),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: AppSpacing.lg),
                 Text(
                   'APP',
                   style: TextStyle(

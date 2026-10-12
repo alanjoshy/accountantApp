@@ -29,14 +29,10 @@ class BalanceCard extends StatefulWidget {
 }
 
 class _BalanceCardState extends State<BalanceCard> {
-  bool _visible = false;
+  /// Local UI flag — [ValueNotifier] so currency listeners don’t need setState.
+  final ValueNotifier<bool> _visible = ValueNotifier(false);
 
   static const _placeholderCapacity = 10000.0;
-
-  String _amount(double value) {
-    if (!_visible) return '•••••';
-    return CurrencyController.instance.format(value);
-  }
 
   double get _capacity {
     if (widget.batteryCapacity != null && widget.batteryCapacity! > 0) {
@@ -46,138 +42,165 @@ class _BalanceCardState extends State<BalanceCard> {
     return _placeholderCapacity;
   }
 
+  late final Listenable _amountListenable = Listenable.merge([
+    CurrencyController.instance,
+    _visible,
+  ]);
+
+  @override
+  void dispose() {
+    _visible.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     final capacity = _capacity;
 
-    return ListenableBuilder(
-      listenable: CurrencyController.instance,
-      builder: (context, _) {
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            color: colors.surfaceElevated,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: colors.border),
-          ),
-          child: Stack(
-            children: [
-              Positioned(
-                left: 0,
-                right: 0,
-                top: 0,
-                child: Container(
-                  height: 1,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.transparent,
-                        colors.accent.withValues(alpha: 0.4),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceElevated,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colors.border),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.transparent,
+                    colors.accent.withValues(alpha: 0.4),
+                    Colors.transparent,
+                  ],
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              child: const SizedBox(height: 1, width: double.infinity),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Wrap(
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            spacing: 8,
-                            runSpacing: 4,
-                            children: [
-                              Text(
-                                'Account balance',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                  color: colors.textSecondary,
-                                ),
-                              ),
-                              StreakFireBadge(streak: widget.paymentStreak),
-                            ],
+                    Expanded(
+                      child: Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          Text(
+                            'Account balance',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: colors.textSecondary,
+                            ),
                           ),
-                        ),
-                        _IconBtn(
-                          icon: _visible
+                          StreakFireBadge(streak: widget.paymentStreak),
+                        ],
+                      ),
+                    ),
+                    ValueListenableBuilder<bool>(
+                      valueListenable: _visible,
+                      builder: (context, visible, _) {
+                        return _IconBtn(
+                          icon: visible
                               ? Icons.visibility_off_rounded
                               : Icons.visibility_rounded,
                           colors: colors,
                           onTap: () {
                             HapticFeedback.selectionClick();
-                            setState(() => _visible = !_visible);
+                            _visible.value = !visible;
                           },
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _amount(widget.balance),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 32,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.6,
-                              height: 1,
-                              color: colors.textPrimary,
-                            ),
-                          ),
-                        ),
-                        if (capacity > 0) ...[
-                          const SizedBox(width: 10),
-                          BalanceBattery(
-                            balance: widget.balance,
-                            capacity: capacity,
-                            amountsVisible: _visible,
-                            formatAmount: CurrencyController.instance.format,
-                            compact: true,
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _FlowTile(
-                            label: 'Income',
-                            amount: _amount(widget.income),
-                            icon: Icons.trending_up_rounded,
-                            iconColor: colors.success,
-                            colors: colors,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _FlowTile(
-                            label: 'Expense',
-                            amount: _amount(widget.expense),
-                            icon: Icons.trending_down_rounded,
-                            iconColor: colors.error,
-                            colors: colors,
-                          ),
-                        ),
-                      ],
+                        );
+                      },
                     ),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 10),
+                ListenableBuilder(
+                  listenable: _amountListenable,
+                  builder: (context, _) {
+                    final visible = _visible.value;
+                    final format = CurrencyController.instance.format;
+                    String amount(double v) =>
+                        visible ? format(v) : '•••••';
+
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                amount(widget.balance),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.6,
+                                  height: 1,
+                                  color: colors.textPrimary,
+                                ),
+                              ),
+                            ),
+                            if (capacity > 0) ...[
+                              const SizedBox(width: 10),
+                              BalanceBattery(
+                                balance: widget.balance,
+                                capacity: capacity,
+                                amountsVisible: visible,
+                                formatAmount: format,
+                                compact: true,
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _FlowTile(
+                                label: 'Income',
+                                amount: amount(widget.income),
+                                icon: Icons.trending_up_rounded,
+                                iconColor: colors.success,
+                                colors: colors,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _FlowTile(
+                                label: 'Expense',
+                                amount: amount(widget.expense),
+                                icon: Icons.trending_down_rounded,
+                                iconColor: colors.error,
+                                colors: colors,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 }

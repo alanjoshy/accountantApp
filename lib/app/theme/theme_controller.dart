@@ -6,9 +6,9 @@ import '../../core/constants/app_constants.dart';
 import '../../core/storage/local_storage.dart';
 
 class ThemeController extends ChangeNotifier {
-  ThemeController._();
+  ThemeController();
 
-  static final ThemeController instance = ThemeController._();
+  static final ThemeController instance = ThemeController();
 
   ThemeMode _mode = ThemeMode.system;
 

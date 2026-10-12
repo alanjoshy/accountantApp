@@ -1,4 +1,4 @@
-// Settings — General / Appearance + Currency.
+// Settings — General / Appearance + Currency + Cash flow + Tags.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,6 +9,7 @@ import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_spacing.dart';
 import '../../../../app/theme/theme_controller.dart';
 import '../../../../core/widgets/app_toast.dart';
+import '../../../settings/data/app_settings_store.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -167,6 +168,24 @@ class SettingsScreen extends StatelessWidget {
                         );
                       },
                     ),
+                    const SizedBox(height: AppSpacing.lg),
+                    _SectionLabel('Cash flow', colors),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Cycle start day and monthly income power daily allowance.',
+                      style: TextStyle(fontSize: 12, color: colors.textMuted),
+                    ),
+                    const SizedBox(height: 8),
+                    const _CashFlowSection(),
+                    const SizedBox(height: AppSpacing.lg),
+                    _SectionLabel('Tags', colors),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Reusable tags for Activity filters and transactions.',
+                      style: TextStyle(fontSize: 12, color: colors.textMuted),
+                    ),
+                    const SizedBox(height: 8),
+                    const _TagsSection(),
                   ],
                 ),
               ),
@@ -174,6 +193,267 @@ class SettingsScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CashFlowSection extends StatefulWidget {
+  const _CashFlowSection();
+
+  @override
+  State<_CashFlowSection> createState() => _CashFlowSectionState();
+}
+
+class _CashFlowSectionState extends State<_CashFlowSection> {
+  late final TextEditingController _income;
+  late final TextEditingController _cycleDay;
+
+  @override
+  void initState() {
+    super.initState();
+    final s = AppSettingsStore.instance;
+    final income = s.monthlyIncome;
+    _income = TextEditingController(
+      text: income <= 0
+          ? ''
+          : (income == income.roundToDouble()
+              ? income.round().toString()
+              : income.toString()),
+    );
+    _cycleDay = TextEditingController(text: '${s.cycleStartDay}');
+  }
+
+  @override
+  void dispose() {
+    _income.dispose();
+    _cycleDay.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveIncome() async {
+    final value = double.tryParse(_income.text.trim()) ?? 0;
+    await AppSettingsStore.instance.setMonthlyIncome(value);
+    if (!mounted) return;
+    AppToast.success(context, 'Monthly income saved.');
+  }
+
+  Future<void> _saveCycleDay() async {
+    final day = int.tryParse(_cycleDay.text.trim()) ?? 1;
+    await AppSettingsStore.instance.setCycleStartDay(day);
+    _cycleDay.text = '${AppSettingsStore.instance.cycleStartDay}';
+    if (!mounted) return;
+    AppToast.success(context, 'Cycle start day saved.');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    return _SettingsPanel(
+      colors: colors,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Cycle start day (1–28)',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: colors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _cycleDay,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                    ],
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: colors.surfaceHover,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onSubmitted: (_) => _saveCycleDay(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: _saveCycleDay,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: colors.accent,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Save'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Monthly income',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: colors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _income,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                    ],
+                    decoration: InputDecoration(
+                      hintText: '0',
+                      filled: true,
+                      fillColor: colors.surfaceHover,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onSubmitted: (_) => _saveIncome(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: _saveIncome,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: colors.accent,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Save'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TagsSection extends StatefulWidget {
+  const _TagsSection();
+
+  @override
+  State<_TagsSection> createState() => _TagsSectionState();
+}
+
+class _TagsSectionState extends State<_TagsSection> {
+  final _tag = TextEditingController();
+
+  @override
+  void dispose() {
+    _tag.dispose();
+    super.dispose();
+  }
+
+  Future<void> _add() async {
+    final value = _tag.text.trim();
+    if (value.isEmpty) return;
+    await AppSettingsStore.instance.addTag(value);
+    _tag.clear();
+    if (!mounted) return;
+    AppToast.success(context, 'Tag added.');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    return ListenableBuilder(
+      listenable: AppSettingsStore.instance,
+      builder: (context, _) {
+        final tags = AppSettingsStore.instance.tags;
+        return _SettingsPanel(
+          colors: colors,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _tag,
+                        decoration: InputDecoration(
+                          hintText: 'New tag',
+                          filled: true,
+                          fillColor: colors.surfaceHover,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onSubmitted: (_) => _add(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: _add,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: colors.accent,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('Add'),
+                    ),
+                  ],
+                ),
+                if (tags.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final tag in tags)
+                        InputChip(
+                          label: Text(tag),
+                          onDeleted: () async {
+                            await AppSettingsStore.instance.removeTag(tag);
+                            if (!context.mounted) return;
+                            AppToast.show(
+                              context,
+                              'Tag removed.',
+                              tone: AppToastTone.info,
+                            );
+                          },
+                        ),
+                    ],
+                  ),
+                ] else ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'No tags yet.',
+                    style: TextStyle(fontSize: 12, color: colors.textMuted),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

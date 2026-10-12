@@ -23,26 +23,27 @@ class AppScaffold extends StatelessWidget {
   final VoidCallback? onAddPressed;
   final Color? backgroundColor;
 
-  /// Clearance for the dock’s raised + button (extends above the bar).
-  static const _addButtonClearance = 28.0;
-
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
-    final topPad = MediaQuery.paddingOf(context).top + AppTopBar.height;
-    final bottomPad = BottomNav.height +
-        BottomNav.outerInset +
-        _addButtonClearance +
-        MediaQuery.paddingOf(context).bottom;
+    final mq = MediaQuery.of(context);
+    final topPad = mq.padding.top + AppTopBar.height;
+    final bottomInset = BottomNav.contentInset(context);
 
     return Scaffold(
       backgroundColor: backgroundColor ?? colors.background,
       body: Stack(
         children: [
+          // Body paints under the dock so the frosted glass has content to blur.
           Positioned.fill(
-            child: Padding(
-              padding: EdgeInsets.only(top: topPad, bottom: bottomPad),
-              child: body,
+            child: MediaQuery(
+              data: mq.copyWith(
+                padding: mq.padding.copyWith(top: 0, bottom: bottomInset),
+              ),
+              child: Padding(
+                padding: EdgeInsets.only(top: topPad),
+                child: body,
+              ),
             ),
           ),
           Positioned(

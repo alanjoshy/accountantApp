@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/navigation/app_tab.dart';
 import '../../../../core/widgets/app_scaffold.dart';
-import '../../../../core/widgets/app_toast.dart';
 import '../../../activity/presentation/screens/activity_screen.dart';
 import '../../../budgets/presentation/screens/budgets_screen.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../../../more/presentation/screens/more_screen.dart';
+import '../../../transactions/presentation/widgets/add_transaction_sheet.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key, this.initialTab = AppTab.home});
@@ -74,70 +74,109 @@ class _MainShellState extends State<MainShell>
     _motion.forward(from: 0);
   }
 
+  void _onAdd() {
+    showAddTransactionSheet(context);
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppScaffold(
       tab: _tab,
       onTabSelected: _select,
-      onAddPressed: () {
-        AppToast.show(
-          context,
-          'Add transaction coming soon.',
-          tone: AppToastTone.info,
-        );
-      },
+      onAddPressed: _onAdd,
       body: ClipRect(
-        child: AnimatedBuilder(
-          animation: _motion,
-          builder: (context, _) {
-            final t = Curves.easeOutCubic.transform(_motion.value);
-            return Stack(
-              fit: StackFit.expand,
-              children: [
-                for (final tab in AppTab.values) _page(tab, t),
-              ],
-            );
-          },
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            for (final tab in AppTab.values)
+              _TabPageSlot(
+                tab: tab,
+                current: _tab,
+                previous: _previous,
+                direction: _direction,
+                motion: _motion,
+                slide: _slide,
+                child: _pages[tab.index],
+              ),
+          ],
         ),
       ),
     );
   }
+}
 
-  Widget _page(AppTab tab, double t) {
-    final selected = tab == _tab;
-    final leaving = tab == _previous && _previous != _tab;
+/// Keeps tab [State] alive via [Offstage], but only listens to [motion]
+/// while that tab is entering or leaving — settled tabs skip per-frame rebuilds.
+class _TabPageSlot extends StatelessWidget {
+  const _TabPageSlot({
+    required this.tab,
+    required this.current,
+    required this.previous,
+    required this.direction,
+    required this.motion,
+    required this.slide,
+    required this.child,
+  });
+
+  final AppTab tab;
+  final AppTab current;
+  final AppTab previous;
+  final int direction;
+  final AnimationController motion;
+  final double slide;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = tab == current;
+    final leaving = tab == previous && previous != current;
     final hidden = !selected && !leaving;
-    final settled = _previous == _tab;
-    final opacity = selected
-        ? (settled ? 1.0 : t)
-        : leaving
-            ? 1 - t
-            : 0.0;
-    final dx = hidden || settled
-        ? 0.0
-        : selected
-            ? _slide * _direction * (1 - t)
-            : -_slide * _direction * t;
+    final settled = previous == current;
 
-    return Offstage(
+    final page = TickerMode(
+      enabled: !hidden,
+      child: ExcludeSemantics(
+        excluding: !selected,
+        child: child,
+      ),
+    );
+
+    if (hidden || settled) {
+      return Offstage(
+        key: ValueKey(tab),
+        offstage: hidden,
+        child: IgnorePointer(
+          ignoring: !selected,
+          child: page,
+        ),
+      );
+    }
+
+    return AnimatedBuilder(
       key: ValueKey(tab),
-      offstage: hidden,
-      child: IgnorePointer(
-        ignoring: !selected,
-        child: Opacity(
-          opacity: opacity,
-          child: Transform.translate(
-            offset: Offset(dx, 0),
-            child: TickerMode(
-              enabled: !hidden,
-              child: ExcludeSemantics(
-                excluding: !selected,
-                child: _pages[tab.index],
+      animation: motion,
+      child: page,
+      builder: (context, child) {
+        final t = Curves.easeOutCubic.transform(motion.value);
+        final opacity = selected ? t : 1 - t;
+        final dx = selected
+            ? slide * direction * (1 - t)
+            : -slide * direction * t;
+
+        return Offstage(
+          offstage: false,
+          child: IgnorePointer(
+            ignoring: !selected,
+            child: Opacity(
+              opacity: opacity,
+              child: Transform.translate(
+                offset: Offset(dx, 0),
+                child: child,
               ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

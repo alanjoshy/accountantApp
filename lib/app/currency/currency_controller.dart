@@ -5,11 +5,12 @@ import 'package:flutter/foundation.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/storage/local_storage.dart';
 import 'app_currency.dart';
+import 'money_format.dart';
 
 class CurrencyController extends ChangeNotifier {
-  CurrencyController._();
+  CurrencyController();
 
-  static final CurrencyController instance = CurrencyController._();
+  static final CurrencyController instance = CurrencyController();
 
   AppCurrency _currency = AppCurrency.inr;
 
@@ -30,16 +31,8 @@ class CurrencyController extends ChangeNotifier {
     await LocalStorage.setString(AppConstants.currencyCodeKey, currency.code);
   }
 
-  String format(double value) {
-    final whole = value.round().abs();
-    final digits = whole.toString();
-    final buf = StringBuffer(symbol);
-    if (value < 0) buf.write('-');
-    for (var i = 0; i < digits.length; i++) {
-      final fromEnd = digits.length - i;
-      if (i > 0 && fromEnd % 3 == 0) buf.write(',');
-      buf.write(digits[i]);
-    }
-    return buf.toString();
-  }
+  String format(double value) => formatMoney(value, symbol);
+
+  String compact(double value) =>
+      formatMoneyCompact(value, symbol, format);
 }
