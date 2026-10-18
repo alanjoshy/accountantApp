@@ -1,4 +1,4 @@
-// Floating dock bottom bar (web BottomNav).
+// Floating dock bottom bar (web BottomNav) — scrub + press float + haptics.
 
 import 'dart:ui';
 
@@ -60,6 +60,11 @@ class _BottomNavState extends State<BottomNav>
   double? _width;
   bool _needsPlace = true;
   bool _animateNext = false;
+
+  /// Finger is dragging across the dock.
+  bool _scrubbing = false;
+  /// Tab under the finger while scrubbing / pressing.
+  AppTab? _hoverTab;
 
   @override
   void didUpdateWidget(BottomNav oldWidget) {
@@ -130,75 +135,89 @@ class _BottomNavState extends State<BottomNav>
                         child: LayoutBuilder(
                           builder: (context, constraints) {
                             _scheduleMotion(constraints.maxWidth);
-                            return Stack(
-                              key: _stackKey,
-                              children: [
-                                if (_from != null && _to != null)
-                                  Positioned.fill(
-                                    child: IgnorePointer(
-                                      child: AnimatedBuilder(
-                                        animation: _motion,
-                                        builder: (context, _) {
-                                          final t = Curves.easeOutCubic
-                                              .transform(_motion.value);
-                                          final rect =
-                                              Rect.lerp(_from, _to, t)!;
-                                          return CustomPaint(
-                                            painter: _PillPainter(
-                                              rect,
-                                              colors.accentMuted,
+                            return Listener(
+                              behavior: HitTestBehavior.translucent,
+                              onPointerDown: (e) {
+                                setState(() => _scrubbing = true);
+                                _applyPointer(e.position, isDown: true);
+                              },
+                              onPointerMove: (e) {
+                                if (!_scrubbing) return;
+                                _applyPointer(e.position, isDown: false);
+                              },
+                              onPointerUp: (_) => _endScrub(),
+                              onPointerCancel: (_) => _endScrub(),
+                              child: Stack(
+                                key: _stackKey,
+                                clipBehavior: Clip.none,
+                                children: [
+                                  if (_from != null && _to != null)
+                                    Positioned.fill(
+                                      child: IgnorePointer(
+                                        child: AnimatedBuilder(
+                                          animation: _motion,
+                                          builder: (context, _) {
+                                            final t = Curves.easeOutCubic
+                                                .transform(_motion.value);
+                                            final rect =
+                                                Rect.lerp(_from, _to, t)!;
+                                            return CustomPaint(
+                                              painter: _PillPainter(
+                                                rect,
+                                                colors.accentMuted,
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceAround,
+                                          children: [
+                                            _item(
+                                              tab: AppTab.home,
+                                              icon: Icons.home_rounded,
+                                              label: 'Home',
+                                              colors: colors,
                                             ),
-                                          );
-                                        },
+                                            _item(
+                                              tab: AppTab.activity,
+                                              icon: Icons.timeline_rounded,
+                                              label: 'Activity',
+                                              colors: colors,
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                    ),
+                                      const SizedBox(width: 56),
+                                      Expanded(
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceAround,
+                                          children: [
+                                            _item(
+                                              tab: AppTab.budgets,
+                                              icon: Icons.pie_chart_rounded,
+                                              label: 'Budgets',
+                                              colors: colors,
+                                            ),
+                                            _item(
+                                              tab: AppTab.more,
+                                              icon: Icons.grid_view_rounded,
+                                              label: 'More',
+                                              colors: colors,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceAround,
-                                        children: [
-                                          _item(
-                                            tab: AppTab.home,
-                                            icon: Icons.home_rounded,
-                                            label: 'Home',
-                                            colors: colors,
-                                          ),
-                                          _item(
-                                            tab: AppTab.activity,
-                                            icon: Icons.timeline_rounded,
-                                            label: 'Activity',
-                                            colors: colors,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(width: 56),
-                                    Expanded(
-                                      child: Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceAround,
-                                        children: [
-                                          _item(
-                                            tab: AppTab.budgets,
-                                            icon: Icons.pie_chart_rounded,
-                                            label: 'Budgets',
-                                            colors: colors,
-                                          ),
-                                          _item(
-                                            tab: AppTab.more,
-                                            icon: Icons.grid_view_rounded,
-                                            label: 'More',
-                                            colors: colors,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
+                                ],
+                              ),
                             );
                           },
                         ),
@@ -210,38 +229,56 @@ class _BottomNavState extends State<BottomNav>
             ),
             Positioned(
               top: -20,
-              child: GestureDetector(
-                onTap: () {
+              child: _AddButton(
+                colors: colors,
+                onPressed: () {
                   HapticFeedback.heavyImpact();
                   widget.onAddPressed?.call();
                 },
-                child: Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: colors.accent,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: colors.background, width: 4),
-                    boxShadow: [
-                      BoxShadow(
-                        color: colors.accent.withValues(alpha: 0.45),
-                        blurRadius: 20,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.add_rounded,
-                    color: AppColors.white,
-                    size: 26,
-                  ),
-                ),
               ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  void _endScrub() {
+    if (!_scrubbing && _hoverTab == null) return;
+    setState(() {
+      _scrubbing = false;
+      _hoverTab = null;
+    });
+  }
+
+  void _applyPointer(Offset global, {bool isDown = false}) {
+    final tab = _tabAtGlobal(global);
+    if (tab == null) return;
+
+    if (_hoverTab != tab) {
+      setState(() => _hoverTab = tab);
+    }
+
+    if (tab != widget.current) {
+      // First contact = tap feel; drag across tabs = light ticks.
+      _select(tab, fromScrub: !isDown);
+    } else if (isDown) {
+      HapticFeedback.selectionClick();
+    }
+  }
+
+  AppTab? _tabAtGlobal(Offset global) {
+    for (final tab in AppTab.values) {
+      final itemContext = _itemKeys[tab.index].currentContext;
+      if (itemContext == null) continue;
+      final box = itemContext.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize) continue;
+      final origin = box.localToGlobal(Offset.zero);
+      // Slightly taller hit target for easier scrubbing.
+      final rect = (origin & box.size).inflate(10);
+      if (rect.contains(global)) return tab;
+    }
+    return null;
   }
 
   void _scheduleMotion(double width) {
@@ -265,21 +302,30 @@ class _BottomNavState extends State<BottomNav>
     required String label,
     required AppPalette colors,
   }) {
+    final active = widget.current == tab;
+    final hovering = _hoverTab == tab;
     return Flexible(
       child: _NavItem(
         itemKey: _itemKeys[tab.index],
         icon: icon,
         label: label,
-        active: widget.current == tab,
+        active: active,
+        lifted: active || hovering,
+        pressed: hovering && _scrubbing,
         showFill: _from == null,
         colors: colors,
-        onTap: () => _select(tab),
+        onTap: () => _select(tab, fromScrub: false),
       ),
     );
   }
 
-  void _select(AppTab tab) {
-    HapticFeedback.selectionClick();
+  void _select(AppTab tab, {required bool fromScrub}) {
+    if (tab == widget.current) return;
+    if (fromScrub) {
+      HapticFeedback.selectionClick();
+    } else {
+      HapticFeedback.mediumImpact();
+    }
     widget.onTabSelected(tab);
   }
 
@@ -337,6 +383,62 @@ class _BottomNavState extends State<BottomNav>
   }
 }
 
+class _AddButton extends StatefulWidget {
+  const _AddButton({required this.colors, required this.onPressed});
+
+  final AppPalette colors;
+  final VoidCallback onPressed;
+
+  @override
+  State<_AddButton> createState() => _AddButtonState();
+}
+
+class _AddButtonState extends State<_AddButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTap: widget.onPressed,
+      child: AnimatedScale(
+        scale: _pressed ? 0.94 : 1.03,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOutCubic,
+        child: Transform.translate(
+          offset: Offset(0, _pressed ? 0 : -2),
+          child: Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: widget.colors.accent,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: AppColors.of(context).background,
+                width: 4,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: widget.colors.accent.withValues(alpha: 0.45),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.add_rounded,
+              color: AppColors.white,
+              size: 26,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _PillPainter extends CustomPainter {
   const _PillPainter(this.rect, this.color);
 
@@ -362,6 +464,8 @@ class _NavItem extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.active,
+    required this.lifted,
+    required this.pressed,
     required this.showFill,
     required this.colors,
     required this.onTap,
@@ -371,6 +475,8 @@ class _NavItem extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool active;
+  final bool lifted;
+  final bool pressed;
   final bool showFill;
   final AppPalette colors;
   final VoidCallback onTap;
@@ -379,43 +485,64 @@ class _NavItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final reduce = MediaQuery.disableAnimationsOf(context);
     final target = active ? colors.accent : colors.textMuted;
+    final dy = reduce ? 0.0 : (pressed ? -1.0 : (lifted ? -2.5 : 0.0));
+    final scale = reduce ? 1.0 : (pressed ? 0.94 : (lifted ? 1.04 : 1.0));
 
-    return InkWell(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: FittedBox(
-        key: itemKey,
-        fit: BoxFit.scaleDown,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: active && showFill ? colors.accentMuted : Colors.transparent,
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            child: TweenAnimationBuilder<Color?>(
-              tween: ColorTween(end: target),
-              duration: reduce ? Duration.zero : BottomNav.motion,
-              curve: Curves.easeOutCubic,
-              builder: (context, color, _) {
-                final ink = color ?? target;
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(icon, size: 22, color: ink),
-                    const SizedBox(height: 2),
-                    Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.2,
-                        color: ink,
-                      ),
-                    ),
-                  ],
-                );
-              },
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(end: dy),
+        duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
+        curve: Curves.easeOutCubic,
+        builder: (context, offsetY, child) {
+          return Transform.translate(
+            offset: Offset(0, offsetY),
+            child: child,
+          );
+        },
+        child: AnimatedScale(
+          scale: scale,
+          duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
+          curve: Curves.easeOutCubic,
+          child: FittedBox(
+            key: itemKey,
+            fit: BoxFit.scaleDown,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: active && showFill
+                    ? colors.accentMuted
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                child: TweenAnimationBuilder<Color?>(
+                  tween: ColorTween(end: target),
+                  duration: reduce ? Duration.zero : BottomNav.motion,
+                  curve: Curves.easeOutCubic,
+                  builder: (context, color, _) {
+                    final ink = color ?? target;
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(icon, size: 22, color: ink),
+                        const SizedBox(height: 2),
+                        Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.2,
+                            color: ink,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
             ),
           ),
         ),

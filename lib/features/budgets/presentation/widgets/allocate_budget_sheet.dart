@@ -6,9 +6,11 @@ import 'package:flutter/services.dart';
 import '../../../../app/currency/currency_controller.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_spacing.dart';
+import '../../../../core/widgets/app_sheet.dart';
 import '../../../../core/widgets/app_toast.dart';
 import '../../data/budget.dart';
 import '../../data/budget_store.dart';
+import '../../data/category_style.dart';
 import '../../domain/budget_logic.dart';
 
 Future<void> showAllocateBudgetSheet(
@@ -16,13 +18,8 @@ Future<void> showAllocateBudgetSheet(
   required List<Budget> budgets,
   required double pool,
 }) {
-  return showModalBottomSheet<void>(
+  return showAppSheet<void>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: AppColors.of(context).surfaceElevated,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
     builder: (_) => AllocateBudgetSheet(budgets: budgets, pool: pool),
   );
 }
@@ -164,22 +161,38 @@ class _AllocateBudgetSheetState extends State<AllocateBudgetSheet> {
               ),
               const SizedBox(height: 4),
               Text(
+                'Split your planned income across categories. Leave a field at 0 to skip it.',
+                style: TextStyle(fontSize: 12, color: colors.textMuted),
+              ),
+              const SizedBox(height: 6),
+              Text(
                 'Pool ${format(widget.pool)} · '
                 '${over ? 'Over' : 'Left'} ${format(over ? _total - widget.pool : remaining)}',
                 style: TextStyle(
                   fontSize: 12,
-                  color: over ? colors.error : colors.textMuted,
+                  fontWeight: FontWeight.w600,
+                  color: over ? colors.error : colors.textSecondary,
                 ),
               ),
               const SizedBox(height: 14),
               for (final b in widget.budgets) ...[
-                Text(
-                  b.category,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: colors.textSecondary,
-                  ),
+                Row(
+                  children: [
+                    Icon(
+                      categoryIconData(b.icon),
+                      size: 16,
+                      color: categoryColorFromHex(b.color),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      b.category,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 6),
                 DecoratedBox(

@@ -6,6 +6,10 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/storage/local_storage.dart';
+import '../../accounts/data/account_store.dart';
+import '../../accounts/domain/account_balances.dart';
+import '../../accounts/domain/payments.dart';
+import '../../settings/data/app_settings_store.dart';
 import 'transaction.dart';
 
 class TransactionStore extends ChangeNotifier {
@@ -45,6 +49,14 @@ class TransactionStore extends ChangeNotifier {
     await LocalStorage.setString(AppConstants.transactionsKey, encoded);
   }
 
+  /// Replace all rows without re-applying account deltas (backup restore).
+  Future<void> replaceAll(List<MoneyTransaction> items) async {
+    _items = [...items];
+    _sort();
+    notifyListeners();
+    await _persist();
+  }
+
   void _sort() {
     _items.sort((a, b) {
       final byDate = b.date.compareTo(a.date);
@@ -57,6 +69,32 @@ class TransactionStore extends ChangeNotifier {
 
   String _now() => DateTime.now().toUtc().toIso8601String();
 
+  Future<void> _syncAccounts(MoneyTransaction t, {required bool reverse}) async {
+    // Transfers must not overdraw; income/expense may go negative until tally.
+    final strictTransfer = t.type == TransactionType.transfer &&
+        t.category != 'Adjustment';
+    final next = applyTransactionToAccounts(
+      AccountStore.instance.accounts,
+      t,
+      reverse: reverse,
+      allowNegative: !strictTransfer,
+    );
+    await AccountStore.instance.applyBalances(next);
+  }
+
+  /// Prefer an explicit account; otherwise the default / first account so
+  /// home "Account balance" stays in sync with income & expense.
+  String? _resolveAccountId(String? accountId) {
+    final accounts = AccountStore.instance.accounts;
+    if (accounts.isEmpty) return null;
+    bool exists(String? id) =>
+        id != null && id.isNotEmpty && accounts.any((a) => a.id == id);
+    if (exists(accountId)) return accountId;
+    final preferred = AppSettingsStore.instance.defaultAccountId;
+    if (exists(preferred)) return preferred;
+    return accounts.first.id;
+  }
+
   Future<MoneyTransaction> add({
     required String title,
     required double amount,
@@ -65,7 +103,13 @@ class TransactionStore extends ChangeNotifier {
     required String date,
     String? note,
     List<String> tags = const [],
+    PaymentMode? paymentMode,
+    String? accountId,
+    String? toAccountId,
   }) async {
+    final resolvedAccountId = type == TransactionType.transfer
+        ? accountId
+        : _resolveAccountId(accountId);
     final tx = MoneyTransaction(
       id: _newId(),
       title: title.trim(),
@@ -76,7 +120,11 @@ class TransactionStore extends ChangeNotifier {
       createdAt: _now(),
       note: note?.trim().isEmpty ?? true ? null : note!.trim(),
       tags: tags,
+      paymentMode: paymentMode,
+      accountId: resolvedAccountId,
+      toAccountId: toAccountId,
     );
+    await _syncAccounts(tx, reverse: false);
     _items = [tx, ..._items];
     _sort();
     notifyListeners();
@@ -87,6 +135,14 @@ class TransactionStore extends ChangeNotifier {
   Future<void> update(MoneyTransaction tx) async {
     final i = _items.indexWhere((t) => t.id == tx.id);
     if (i < 0) throw StateError('Transaction not found');
+    final previous = _items[i];
+    await _syncAccounts(previous, reverse: true);
+    try {
+      await _syncAccounts(tx, reverse: false);
+    } catch (e) {
+      await _syncAccounts(previous, reverse: false);
+      rethrow;
+    }
     _items = [..._items]..[i] = tx;
     _sort();
     notifyListeners();
@@ -94,6 +150,10 @@ class TransactionStore extends ChangeNotifier {
   }
 
   Future<void> delete(String id) async {
+    final existing = _items.where((t) => t.id == id).firstOrNull;
+    if (existing != null) {
+      await _syncAccounts(existing, reverse: true);
+    }
     _items = [for (final t in _items) if (t.id != id) t];
     notifyListeners();
     await _persist();
@@ -101,6 +161,10 @@ class TransactionStore extends ChangeNotifier {
 
   Future<int> deleteMany(Iterable<String> ids) async {
     final set = ids.toSet();
+    final removing = [for (final t in _items) if (set.contains(t.id)) t];
+    for (final t in removing) {
+      await _syncAccounts(t, reverse: true);
+    }
     final before = _items.length;
     _items = [for (final t in _items) if (!set.contains(t.id)) t];
     final removed = before - _items.length;

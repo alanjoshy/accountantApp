@@ -5,9 +5,18 @@ import 'package:flutter/services.dart';
 
 import '../../../../app/currency/currency_controller.dart';
 import '../../../../app/theme/app_colors.dart';
+import '../../../activity/domain/cycle.dart';
+import '../../../budgets/data/budget_store.dart';
+import '../../../budgets/data/category_style.dart';
+import '../../../budgets/domain/budget_logic.dart';
+import '../../../settings/data/app_settings_store.dart';
+import '../../../transactions/data/transaction_store.dart';
+import '../../domain/home_logic.dart';
 
 class MonthPulseCard extends StatefulWidget {
-  const MonthPulseCard({super.key});
+  const MonthPulseCard({super.key, this.paymentStreak});
+
+  final int? paymentStreak;
 
   @override
   State<MonthPulseCard> createState() => _MonthPulseCardState();
@@ -16,304 +25,251 @@ class MonthPulseCard extends StatefulWidget {
 class _MonthPulseCardState extends State<MonthPulseCard> {
   static const _weekdays = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
-  static const _barColors = <Color>[
-    Color(0xFF3B82F6),
-    Color(0xFF22C55E),
-    Color(0xFFF59E0B),
-    Color(0xFFEF4444),
-    Color(0xFFA855F7),
-    Color(0xFF06B6D4),
-  ];
-
-  static const _monthNames = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
-
   late DateTime _cursor;
-  late List<_CategoryBar> _categories;
-  late List<int> _heat;
-  late _MonthStory _story;
-  late double _maxLimit;
-  late int _activeDays;
-  late int _daysInMonth;
-  late String _monthLabel;
 
   @override
   void initState() {
     super.initState();
     final now = DateTime.now();
     _cursor = DateTime(now.year, now.month);
-    _recompute();
   }
 
-  void _shift(int delta) {
+  void _shift(int delta, MonthPulseSnapshot snap) {
+    if (delta < 0 && !snap.canGoPrev) return;
+    if (delta > 0 && !snap.canGoNext) return;
     HapticFeedback.selectionClick();
     setState(() {
       _cursor = DateTime(_cursor.year, _cursor.month + delta);
-      _recompute();
     });
-  }
-
-  void _recompute() {
-    final seed = _cursor.year * 12 + _cursor.month;
-    final base = <(String, double, double)>[
-      ('Food', 4200, 6000),
-      ('Rent', 15000, 15000),
-      ('Travel', 2800, 4000),
-      ('Bills', 1900, 3000),
-      ('Fun', 900, 2000),
-    ];
-    _categories = [
-      for (var i = 0; i < base.length; i++)
-        _CategoryBar(
-          label: base[i].$1,
-          spent: base[i].$2 + (seed % 3) * 80.0 * (i + 1),
-          limit: base[i].$3,
-          color: _barColors[i % _barColors.length],
-        ),
-    ];
-    _maxLimit = _categories.fold<double>(
-      0,
-      (m, c) => c.limit > m ? c.limit : m,
-    );
-
-    final year = _cursor.year;
-    final month = _cursor.month;
-    _daysInMonth = DateTime(year, month + 1, 0).day;
-    final firstWeekday = DateTime(year, month, 1).weekday;
-    final leading = firstWeekday - 1;
-    const weeks = 6;
-    _heat = List<int>.filled(weeks * 7, -1);
-    for (var day = 1; day <= _daysInMonth; day++) {
-      final n = (seed * 17 + day * 13) % 11;
-      final level = n < 3
-          ? 0
-          : n < 5
-              ? 1
-              : n < 7
-                  ? 2
-                  : n < 9
-                      ? 3
-                      : 4;
-      _heat[leading + day - 1] = level;
-    }
-    _activeDays = _heat.where((l) => l > 0).length;
-
-    final spendDay = ((seed * 7) % _daysInMonth) + 1;
-    final incomeDay = ((seed * 3) % _daysInMonth) + 1;
-    final label = _monthNames[_cursor.month - 1];
-    _story = _MonthStory(
-      spendLabel: '$spendDay $label',
-      spendAmount: 1800.0 + (seed % 5) * 420,
-      incomeLabel: '$incomeDay $label',
-      incomeAmount: 35000.0 + (seed % 4) * 2500,
-      dailyAverage: 900.0 + (seed % 6) * 80,
-    );
-    _monthLabel = '$label ${_cursor.year}';
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
-    final categories = _categories;
-    final maxLimit = _maxLimit;
-    final heat = _heat;
-    final activeDays = _activeDays;
-    final daysInMonth = _daysInMonth;
-    final story = _story;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.surfaceElevated,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colors.border),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        TransactionStore.instance,
+        BudgetStore.instance,
+        AppSettingsStore.instance,
+        CurrencyController.instance,
+      ]),
+      builder: (context, _) {
+        final cycleDay = AppSettingsStore.instance.cycleStartDay;
+        final txs = TransactionStore.instance.transactions;
+        final budgets = BudgetStore.instance.budgets;
+        final snap = buildMonthPulseSnapshot(
+          transactions: txs,
+          budgets: budgets,
+          cycleStartDay: cycleDay,
+          monthlyIncome: AppSettingsStore.instance.monthlyIncome,
+          viewYear: _cursor.year,
+          viewMonthIndex: _cursor.month - 1,
+          cycleBalanceRows: buildBudgetBalanceRows(
+            listedBudgetsForWindow(
+              budgets,
+              getCurrentCycleDayBounds(cycleDay),
+              includeUndated: true,
+            ),
+            txs,
+            cycleStartDay: cycleDay,
+          ),
+          paymentStreak: widget.paymentStreak,
+        );
+
+        final categories = snap.categories;
+        final maxLimit = categories.fold<double>(
+          0,
+          (m, c) => c.limit > m ? c.limit : m,
+        );
+
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: colors.surfaceElevated,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: colors.border),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Month pulse',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: colors.textPrimary,
-                        ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Month pulse',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: colors.textPrimary,
+                            ),
+                          ),
+                          Text(
+                            snap.cycleHint,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: colors.textMuted,
+                            ),
+                          ),
+                        ],
                       ),
-                      Text(
-                        'Calendar month',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: colors.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                _NavChip(
-                  icon: Icons.chevron_left_rounded,
-                  colors: colors,
-                  onTap: () => _shift(-1),
-                ),
-                SizedBox(
-                  width: 64,
-                  child: Text(
-                    _monthLabel,
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: colors.textSecondary,
                     ),
+                    _NavChip(
+                      icon: Icons.chevron_left_rounded,
+                      colors: colors,
+                      enabled: snap.canGoPrev,
+                      onTap: () => _shift(-1, snap),
+                    ),
+                    SizedBox(
+                      width: 64,
+                      child: Text(
+                        snap.monthLabel,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                    ),
+                    _NavChip(
+                      icon: Icons.chevron_right_rounded,
+                      colors: colors,
+                      enabled: snap.canGoNext,
+                      onTap: () => _shift(1, snap),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final stack = constraints.maxWidth < 320;
+                    const panelH = 136.0;
+                    final cats = _Panel(
+                      colors: colors,
+                      fill: true,
+                      child: _CategoriesChart(
+                        categories: categories,
+                        maxLimit: maxLimit,
+                        colors: colors,
+                      ),
+                    );
+                    final spend = _Panel(
+                      colors: colors,
+                      fill: true,
+                      child: _SpendingHeat(
+                        weekdays: _weekdays,
+                        cells: snap.heat,
+                        colors: colors,
+                      ),
+                    );
+
+                    if (stack) {
+                      return Column(
+                        children: [
+                          SizedBox(height: panelH, child: cats),
+                          const SizedBox(height: 4),
+                          SizedBox(height: panelH, child: spend),
+                        ],
+                      );
+                    }
+
+                    return SizedBox(
+                      height: panelH,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(child: cats),
+                          const SizedBox(width: 4),
+                          Expanded(child: spend),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${snap.activeDays}/${snap.daysInMonth} days with activity',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: colors.textMuted,
                   ),
                 ),
-                _NavChip(
-                  icon: Icons.chevron_right_rounded,
-                  colors: colors,
-                  onTap: () => _shift(1),
+                const SizedBox(height: 8),
+                Divider(height: 1, thickness: 1, color: colors.border),
+                const SizedBox(height: 10),
+                Builder(
+                  builder: (context) {
+                    final format = CurrencyController.instance.format;
+                    final story = snap.story;
+                    return Column(
+                      children: [
+                        if (story.topSpendKey != null && story.topSpend > 0)
+                          _StoryBullet(
+                            bulletColor: const Color(0xFFF97316),
+                            colors: colors,
+                            title: 'Most spend day',
+                            detail:
+                                '${formatPulseDayKey(story.topSpendKey!)} · ${format(story.topSpend)}',
+                          )
+                        else
+                          _StoryBullet(
+                            bulletColor: colors.textMuted,
+                            colors: colors,
+                            title: 'No spend logged this month yet',
+                            detail: '',
+                            muted: true,
+                          ),
+                        const SizedBox(height: 6),
+                        if (story.topIncomeKey != null &&
+                            story.topIncome > 0)
+                          _StoryBullet(
+                            bulletColor: const Color(0xFF10B981),
+                            colors: colors,
+                            title: 'Most income day',
+                            detail:
+                                '${formatPulseDayKey(story.topIncomeKey!)} · ${format(story.topIncome)}',
+                          )
+                        else
+                          _StoryBullet(
+                            bulletColor: colors.textMuted,
+                            colors: colors,
+                            title: 'No income logged this month yet',
+                            detail: '',
+                            muted: true,
+                          ),
+                        if (snap.paymentStreak > 0) ...[
+                          const SizedBox(height: 6),
+                          _StoryBullet(
+                            bulletColor: const Color(0xFFF97316),
+                            colors: colors,
+                            title: 'Daily streak',
+                            detail:
+                                '${snap.paymentStreak} day${snap.paymentStreak == 1 ? '' : 's'} logging payments in a row',
+                          ),
+                        ],
+                      ],
+                    );
+                  },
                 ),
               ],
             ),
-            const SizedBox(height: 4),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final stack = constraints.maxWidth < 320;
-                // Match Categories content height so Spending can expand into
-                // the same panel without growing the outer Month pulse card.
-                const panelH = 136.0;
-                final cats = _Panel(
-                  colors: colors,
-                  fill: true,
-                  child: _CategoriesChart(
-                    categories: categories,
-                    maxLimit: maxLimit,
-                    colors: colors,
-                  ),
-                );
-                final spend = _Panel(
-                  colors: colors,
-                  fill: true,
-                  child: _SpendingHeat(
-                    weekdays: _weekdays,
-                    cells: heat,
-                    colors: colors,
-                  ),
-                );
-
-                if (stack) {
-                  return Column(
-                    children: [
-                      SizedBox(height: panelH, child: cats),
-                      const SizedBox(height: 4),
-                      SizedBox(height: panelH, child: spend),
-                    ],
-                  );
-                }
-
-                return SizedBox(
-                  height: panelH,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(child: cats),
-                      const SizedBox(width: 4),
-                      Expanded(child: spend),
-                    ],
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '$activeDays/$daysInMonth days with activity',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
-                color: colors.textMuted,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Divider(height: 1, thickness: 1, color: colors.border),
-            const SizedBox(height: 10),
-            ListenableBuilder(
-              listenable: CurrencyController.instance,
-              builder: (context, _) {
-                final format = CurrencyController.instance.format;
-                return Column(
-                  children: [
-                    _StoryBullet(
-                      // web: text-orange-500
-                      bulletColor: const Color(0xFFF97316),
-                      colors: colors,
-                      title: 'Most spend day',
-                      detail:
-                          '${story.spendLabel} · ${format(story.spendAmount)}',
-                    ),
-                    const SizedBox(height: 6),
-                    _StoryBullet(
-                      // web: text-emerald-500
-                      bulletColor: const Color(0xFF10B981),
-                      colors: colors,
-                      title: 'Most income day',
-                      detail:
-                          '${story.incomeLabel} · ${format(story.incomeAmount)}',
-                    ),
-                    const SizedBox(height: 6),
-                    _StoryBullet(
-                      bulletColor: const Color(0xFFF97316),
-                      colors: colors,
-                      title: 'Daily average spending',
-                      detail: '${format(story.dailyAverage)} per day',
-                    ),
-                  ],
-                );
-              },
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
-}
-
-class _MonthStory {
-  const _MonthStory({
-    required this.spendLabel,
-    required this.spendAmount,
-    required this.incomeLabel,
-    required this.incomeAmount,
-    required this.dailyAverage,
-  });
-
-  final String spendLabel;
-  final double spendAmount;
-  final String incomeLabel;
-  final double incomeAmount;
-  final double dailyAverage;
 }
 
 class _StoryBullet extends StatelessWidget {
@@ -322,15 +278,45 @@ class _StoryBullet extends StatelessWidget {
     required this.colors,
     required this.title,
     required this.detail,
+    this.muted = false,
   });
 
   final Color bulletColor;
   final AppPalette colors;
   final String title;
   final String detail;
+  final bool muted;
 
   @override
   Widget build(BuildContext context) {
+    if (muted) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '•',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              height: 1.35,
+              color: bulletColor,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              title,
+              style: TextStyle(
+                fontSize: 11,
+                height: 1.35,
+                color: colors.textMuted,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -360,7 +346,7 @@ class _StoryBullet extends StatelessWidget {
                     color: colors.textPrimary,
                   ),
                 ),
-                TextSpan(text: ' · $detail'),
+                if (detail.isNotEmpty) TextSpan(text: ' · $detail'),
               ],
             ),
           ),
@@ -370,42 +356,33 @@ class _StoryBullet extends StatelessWidget {
   }
 }
 
-class _CategoryBar {
-  const _CategoryBar({
-    required this.label,
-    required this.spent,
-    required this.limit,
-    required this.color,
-  });
-
-  final String label;
-  final double spent;
-  final double limit;
-  final Color color;
-}
-
 class _NavChip extends StatelessWidget {
   const _NavChip({
     required this.icon,
     required this.colors,
     required this.onTap,
+    this.enabled = true,
   });
 
   final IconData icon;
   final AppPalette colors;
   final VoidCallback onTap;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: SizedBox(
-          width: 28,
-          height: 28,
-          child: Icon(icon, size: 16, color: colors.textMuted),
+    return Opacity(
+      opacity: enabled ? 1 : 0.3,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: Icon(icon, size: 16, color: colors.textMuted),
+          ),
         ),
       ),
     );
@@ -448,7 +425,7 @@ class _CategoriesChart extends StatelessWidget {
     required this.colors,
   });
 
-  final List<_CategoryBar> categories;
+  final List<MonthPulseCategoryBar> categories;
   final double maxLimit;
   final AppPalette colors;
 
@@ -457,6 +434,16 @@ class _CategoriesChart extends StatelessWidget {
     final remain = Theme.of(context).brightness == Brightness.dark
         ? const Color(0xFF3F3F46)
         : const Color(0xFFD1D5DB);
+
+    if (categories.isEmpty) {
+      return Center(
+        child: Text(
+          'Allocate budgets to see categories',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 10, color: colors.textMuted),
+        ),
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -487,6 +474,7 @@ class _CategoriesChart extends StatelessWidget {
                   : left >= 1000
                       ? '${(left / 1000).toStringAsFixed(1)}k'
                       : left.round().toString();
+              final barColor = categoryColorFromHex(c.colorHex);
 
               return SizedBox(
                 width: 34,
@@ -495,7 +483,9 @@ class _CategoriesChart extends StatelessWidget {
                     final barMax = (box.maxHeight - 28).clamp(10.0, 80.0);
                     final barH = (barMax * h).clamp(10.0, barMax);
                     final spentH = barH *
-                        (over ? 1.0 : (c.spent / c.limit).clamp(0.0, 1.0));
+                        (over ? 1.0 : (c.limit <= 0
+                            ? 0.0
+                            : (c.spent / c.limit).clamp(0.0, 1.0)));
                     return FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.bottomCenter,
@@ -527,7 +517,7 @@ class _CategoriesChart extends StatelessWidget {
                                   Align(
                                     alignment: Alignment.bottomCenter,
                                     child: ColoredBox(
-                                      color: over ? colors.error : c.color,
+                                      color: over ? colors.error : barColor,
                                       child:
                                           SizedBox(width: 18, height: spentH),
                                     ),
@@ -637,7 +627,6 @@ class _SpendingHeat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Title + legend on one row; square cells sized to fit the remaining area.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

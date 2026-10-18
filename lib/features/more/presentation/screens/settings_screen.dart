@@ -1,4 +1,4 @@
-// Settings — General / Appearance + Currency + Cash flow + Tags.
+// Settings — Theme, Currency, and add-transaction defaults.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,8 +8,25 @@ import '../../../../app/currency/currency_controller.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_spacing.dart';
 import '../../../../app/theme/theme_controller.dart';
+import '../../../../core/widgets/app_sheet.dart';
 import '../../../../core/widgets/app_toast.dart';
+import '../../../accounts/data/account_store.dart';
+import '../../../accounts/domain/payments.dart';
+import '../../../accounts/presentation/widgets/account_chip_picker.dart';
+import '../../../accounts/presentation/widgets/payment_mode_picker.dart';
+import '../../../auth/data/app_lock_store.dart';
+import '../../../auth/domain/app_session.dart';
+import '../../../auth/domain/biometric_auth.dart';
+import '../../../auth/domain/sensitive_access_session.dart';
+import '../../../auth/presentation/widgets/pin_setup_sheet.dart';
+import '../../../auth/presentation/widgets/unlock_sheet.dart';
+import '../../../reminders/data/notification_service.dart';
+import '../../../reminders/domain/reminder_sync.dart';
+import '../../../settings/data/app_settings.dart';
 import '../../../settings/data/app_settings_store.dart';
+import '../../../settings/presentation/widgets/cycle_start_day_editor.dart';
+import '../../../transactions/domain/tag_label.dart';
+import '../../../transactions/domain/transaction_categories.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -133,6 +150,24 @@ class SettingsScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: AppSpacing.lg),
+                    _SectionLabel('Security', colors),
+                    const SizedBox(height: 4),
+                    Text(
+                      'PIN, biometrics, and hiding account balances.',
+                      style: TextStyle(fontSize: 12, color: colors.textMuted),
+                    ),
+                    const SizedBox(height: 8),
+                    const _SecuritySection(),
+                    const SizedBox(height: AppSpacing.lg),
+                    _SectionLabel('Reminders', colors),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Local notifications and Things to remember tips.',
+                      style: TextStyle(fontSize: 12, color: colors.textMuted),
+                    ),
+                    const SizedBox(height: 8),
+                    const _RemindersSection(),
+                    const SizedBox(height: AppSpacing.lg),
                     _SectionLabel('Currency', colors),
                     const SizedBox(height: 4),
                     Text(
@@ -169,23 +204,426 @@ class SettingsScreen extends StatelessWidget {
                       },
                     ),
                     const SizedBox(height: AppSpacing.lg),
-                    _SectionLabel('Cash flow', colors),
+                    _SectionLabel('Pay cycle', colors),
                     const SizedBox(height: 4),
                     Text(
-                      'Cycle start day and monthly income power daily allowance.',
+                      'Salary or billing month start — used on Home, Budgets, and Activity.',
                       style: TextStyle(fontSize: 12, color: colors.textMuted),
                     ),
                     const SizedBox(height: 8),
-                    const _CashFlowSection(),
+                    _SettingsPanel(
+                      colors: colors,
+                      child: const Padding(
+                        padding: EdgeInsets.fromLTRB(16, 14, 16, 14),
+                        child: CycleStartDayEditor(showTitle: false),
+                      ),
+                    ),
                     const SizedBox(height: AppSpacing.lg),
-                    _SectionLabel('Tags', colors),
+                    _SectionLabel('When adding', colors),
                     const SizedBox(height: 4),
                     Text(
-                      'Reusable tags for Activity filters and transactions.',
+                      'Defaults for the dock + add sheet.',
                       style: TextStyle(fontSize: 12, color: colors.textMuted),
                     ),
                     const SizedBox(height: 8),
-                    const _TagsSection(),
+                    ListenableBuilder(
+                      listenable: Listenable.merge([
+                        AppSettingsStore.instance,
+                        AccountStore.instance,
+                        CurrencyController.instance,
+                      ]),
+                      builder: (context, _) {
+                        final store = AppSettingsStore.instance;
+                        final accounts = AccountStore.instance.accounts;
+                        final symbol = CurrencyController.instance.symbol;
+                        return _SettingsPanel(
+                          colors: colors,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  14,
+                                  16,
+                                  10,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Default date',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: colors.textPrimary,
+                                      ),
+                                    ),
+                                    if (store.defaultDateMode ==
+                                            DefaultDateMode.remember &&
+                                        store.lastTransactionDate != null) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Last · ${store.lastTransactionDate}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: colors.textMuted,
+                                        ),
+                                      ),
+                                    ],
+                                    const SizedBox(height: 10),
+                                    _DateModeSegmented(
+                                      value: store.defaultDateMode,
+                                      colors: colors,
+                                      onChanged: (mode) async {
+                                        if (mode == store.defaultDateMode) {
+                                          return;
+                                        }
+                                        HapticFeedback.selectionClick();
+                                        await store.setDefaultDateMode(mode);
+                                        if (!context.mounted) return;
+                                        AppToast.success(
+                                          context,
+                                          'Default date saved.',
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Divider(height: 1, color: colors.border),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  14,
+                                  16,
+                                  10,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Default category',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: colors.textPrimary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Wrap(
+                                      spacing: 6,
+                                      runSpacing: 6,
+                                      children: [
+                                        for (final c in spendCategories)
+                                          _ChoiceChip(
+                                            label: c,
+                                            selected:
+                                                store.defaultCategory == c,
+                                            colors: colors,
+                                            onTap: () async {
+                                              if (store.defaultCategory == c) {
+                                                return;
+                                              }
+                                              HapticFeedback.selectionClick();
+                                              await store.setDefaultCategory(c);
+                                              if (!context.mounted) return;
+                                              AppToast.success(
+                                                context,
+                                                'Default category · $c',
+                                              );
+                                            },
+                                          ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Divider(height: 1, color: colors.border),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  14,
+                                  16,
+                                  14,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Default tag',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: colors.textPrimary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Wrap(
+                                      spacing: 6,
+                                      runSpacing: 6,
+                                      children: [
+                                        _ChoiceChip(
+                                          label: 'None',
+                                          selected: store.defaultTag == null,
+                                          colors: colors,
+                                          onTap: () async {
+                                            if (store.defaultTag == null) {
+                                              return;
+                                            }
+                                            HapticFeedback.selectionClick();
+                                            await store.setDefaultTag(null);
+                                            if (!context.mounted) return;
+                                            AppToast.success(
+                                              context,
+                                              'Default tag cleared.',
+                                            );
+                                          },
+                                        ),
+                                        for (final tag in store.tags)
+                                          _ChoiceChip(
+                                            label: formatTagLabel(tag),
+                                            selected: store.defaultTag == tag,
+                                            colors: colors,
+                                            onTap: () async {
+                                              if (store.defaultTag == tag) {
+                                                return;
+                                              }
+                                              HapticFeedback.selectionClick();
+                                              await store.setDefaultTag(tag);
+                                              if (!context.mounted) return;
+                                              AppToast.success(
+                                                context,
+                                                'Default tag · ${formatTagLabel(tag)}',
+                                              );
+                                            },
+                                          ),
+                                      ],
+                                    ),
+                                    if (store.tags.isEmpty) ...[
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        'Add tags in More → Tags to pick a default.',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: colors.textMuted,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              Divider(height: 1, color: colors.border),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  14,
+                                  16,
+                                  10,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Default debit account',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: colors.textPrimary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Used when adding spends and income.',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: colors.textMuted,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    if (accounts.isEmpty)
+                                      Text(
+                                        'Add accounts in More → Accounts & payments.',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: colors.textMuted,
+                                        ),
+                                      )
+                                    else
+                                      AccountChipPicker(
+                                        accounts: accounts,
+                                        value: store.defaultAccountId,
+                                        defaultId: store.defaultAccountId,
+                                        showBalance: false,
+                                        onChanged: (id) async {
+                                          if (store.defaultAccountId == id) {
+                                            return;
+                                          }
+                                          HapticFeedback.selectionClick();
+                                          await store.setDefaultAccountId(id);
+                                          if (!context.mounted) return;
+                                          final name = AccountStore.instance
+                                                  .byId(id)
+                                                  ?.name ??
+                                              'Account';
+                                          AppToast.success(
+                                            context,
+                                            'Default account · $name',
+                                          );
+                                        },
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              Divider(height: 1, color: colors.border),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  14,
+                                  16,
+                                  10,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Default payment mode',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: colors.textPrimary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    PaymentModePicker(
+                                      value: store.defaultPaymentMode,
+                                      defaultId: store.defaultPaymentMode,
+                                      onChanged: (mode) async {
+                                        if (store.defaultPaymentMode == mode) {
+                                          return;
+                                        }
+                                        HapticFeedback.selectionClick();
+                                        await store.setDefaultPaymentMode(mode);
+                                        if (!context.mounted) return;
+                                        AppToast.success(
+                                          context,
+                                          'Default payment · ${paymentModeLabel(mode)}',
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Divider(height: 1, color: colors.border),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  14,
+                                  16,
+                                  14,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Low balance alerts',
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: colors.textPrimary,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                'Show a tip on Home when an account is at or below this amount.',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: colors.textMuted,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Switch.adaptive(
+                                          value: store.lowBalanceEnabled,
+                                          onChanged: (v) async {
+                                            HapticFeedback.selectionClick();
+                                            await store.setLowBalanceEnabled(v);
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                    if (store.lowBalanceEnabled) ...[
+                                      const SizedBox(height: 10),
+                                      TextFormField(
+                                        key: ValueKey(
+                                          'low-balance-${store.lowBalanceThreshold}',
+                                        ),
+                                        initialValue: store.lowBalanceThreshold ==
+                                                store.lowBalanceThreshold
+                                                    .roundToDouble()
+                                            ? store.lowBalanceThreshold
+                                                .round()
+                                                .toString()
+                                            : store.lowBalanceThreshold
+                                                .toString(),
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                          decimal: true,
+                                        ),
+                                        inputFormatters: [
+                                          FilteringTextInputFormatter.allow(
+                                            RegExp(r'[0-9.]'),
+                                          ),
+                                        ],
+                                        decoration: InputDecoration(
+                                          labelText: 'Threshold',
+                                          prefixText: '$symbol ',
+                                          filled: true,
+                                          fillColor: colors.surfaceHover,
+                                          border: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(14),
+                                          ),
+                                        ),
+                                        onFieldSubmitted: (raw) async {
+                                          final v =
+                                              double.tryParse(raw.trim()) ?? 0;
+                                          await store.setLowBalanceThreshold(v);
+                                          if (!context.mounted) return;
+                                          AppToast.success(
+                                            context,
+                                            'Low balance threshold saved.',
+                                          );
+                                        },
+                                        onEditingComplete: () {},
+                                        onTapOutside: (event) {
+                                          FocusScope.of(context).unfocus();
+                                        },
+                                        onChanged: (raw) {
+                                          final v =
+                                              double.tryParse(raw.trim());
+                                          if (v != null && v >= 0) {
+                                            store.setLowBalanceThreshold(v);
+                                          }
+                                        },
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),
@@ -197,153 +635,63 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
-class _CashFlowSection extends StatefulWidget {
-  const _CashFlowSection();
+class _DateModeSegmented extends StatelessWidget {
+  const _DateModeSegmented({
+    required this.value,
+    required this.colors,
+    required this.onChanged,
+  });
 
-  @override
-  State<_CashFlowSection> createState() => _CashFlowSectionState();
-}
-
-class _CashFlowSectionState extends State<_CashFlowSection> {
-  late final TextEditingController _income;
-  late final TextEditingController _cycleDay;
-
-  @override
-  void initState() {
-    super.initState();
-    final s = AppSettingsStore.instance;
-    final income = s.monthlyIncome;
-    _income = TextEditingController(
-      text: income <= 0
-          ? ''
-          : (income == income.roundToDouble()
-              ? income.round().toString()
-              : income.toString()),
-    );
-    _cycleDay = TextEditingController(text: '${s.cycleStartDay}');
-  }
-
-  @override
-  void dispose() {
-    _income.dispose();
-    _cycleDay.dispose();
-    super.dispose();
-  }
-
-  Future<void> _saveIncome() async {
-    final value = double.tryParse(_income.text.trim()) ?? 0;
-    await AppSettingsStore.instance.setMonthlyIncome(value);
-    if (!mounted) return;
-    AppToast.success(context, 'Monthly income saved.');
-  }
-
-  Future<void> _saveCycleDay() async {
-    final day = int.tryParse(_cycleDay.text.trim()) ?? 1;
-    await AppSettingsStore.instance.setCycleStartDay(day);
-    _cycleDay.text = '${AppSettingsStore.instance.cycleStartDay}';
-    if (!mounted) return;
-    AppToast.success(context, 'Cycle start day saved.');
-  }
+  final DefaultDateMode value;
+  final AppPalette colors;
+  final ValueChanged<DefaultDateMode> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
-    return _SettingsPanel(
-      colors: colors,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceHover,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colors.border),
+      ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        padding: const EdgeInsets.all(2),
+        child: Row(
           children: [
-            Text(
-              'Cycle start day (1–28)',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: colors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _cycleDay,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                    ],
-                    decoration: InputDecoration(
-                      filled: true,
-                      fillColor: colors.surfaceHover,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
+            for (final (mode, label) in [
+              (DefaultDateMode.today, 'Today'),
+              (DefaultDateMode.remember, 'Last used'),
+            ])
+              Expanded(
+                child: Material(
+                  color: value == mode ? colors.surface : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  child: InkWell(
+                    onTap: () => onChanged(mode),
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        border: value == mode
+                            ? Border.all(color: colors.border)
+                            : null,
                       ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    onSubmitted: (_) => _saveCycleDay(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: _saveCycleDay,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: colors.accent,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('Save'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Text(
-              'Monthly income',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: colors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _income,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                    ],
-                    decoration: InputDecoration(
-                      hintText: '0',
-                      filled: true,
-                      fillColor: colors.surfaceHover,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: value == mode
+                              ? colors.textPrimary
+                              : colors.textMuted,
+                        ),
                       ),
                     ),
-                    onSubmitted: (_) => _saveIncome(),
                   ),
                 ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: _saveIncome,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: colors.accent,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('Save'),
-                ),
-              ],
-            ),
+              ),
           ],
         ),
       ),
@@ -351,109 +699,45 @@ class _CashFlowSectionState extends State<_CashFlowSection> {
   }
 }
 
-class _TagsSection extends StatefulWidget {
-  const _TagsSection();
+class _ChoiceChip extends StatelessWidget {
+  const _ChoiceChip({
+    required this.label,
+    required this.selected,
+    required this.colors,
+    required this.onTap,
+  });
 
-  @override
-  State<_TagsSection> createState() => _TagsSectionState();
-}
-
-class _TagsSectionState extends State<_TagsSection> {
-  final _tag = TextEditingController();
-
-  @override
-  void dispose() {
-    _tag.dispose();
-    super.dispose();
-  }
-
-  Future<void> _add() async {
-    final value = _tag.text.trim();
-    if (value.isEmpty) return;
-    await AppSettingsStore.instance.addTag(value);
-    _tag.clear();
-    if (!mounted) return;
-    AppToast.success(context, 'Tag added.');
-  }
+  final String label;
+  final bool selected;
+  final AppPalette colors;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
-    return ListenableBuilder(
-      listenable: AppSettingsStore.instance,
-      builder: (context, _) {
-        final tags = AppSettingsStore.instance.tags;
-        return _SettingsPanel(
-          colors: colors,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _tag,
-                        decoration: InputDecoration(
-                          hintText: 'New tag',
-                          filled: true,
-                          fillColor: colors.surfaceHover,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        onSubmitted: (_) => _add(),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: _add,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: colors.accent,
-                        foregroundColor: Colors.white,
-                      ),
-                      child: const Text('Add'),
-                    ),
-                  ],
-                ),
-                if (tags.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final tag in tags)
-                        InputChip(
-                          label: Text(tag),
-                          onDeleted: () async {
-                            await AppSettingsStore.instance.removeTag(tag);
-                            if (!context.mounted) return;
-                            AppToast.show(
-                              context,
-                              'Tag removed.',
-                              tone: AppToastTone.info,
-                            );
-                          },
-                        ),
-                    ],
-                  ),
-                ] else ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    'No tags yet.',
-                    style: TextStyle(fontSize: 12, color: colors.textMuted),
-                  ),
-                ],
-              ],
+    return Material(
+      color: selected ? colors.accentMuted : colors.surfaceHover,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected ? colors.accent : colors.border,
             ),
           ),
-        );
-      },
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: selected ? colors.accent : colors.textPrimary,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -476,12 +760,9 @@ class _CurrencyDropdown extends StatelessWidget {
       ];
 
   Future<void> _pick(BuildContext context) async {
-    final picked = await showModalBottomSheet<AppCurrency>(
+    final picked = await showAppSheet<AppCurrency>(
       context: context,
-      backgroundColor: colors.surfaceElevated,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      isScrollControlled: false,
       builder: (sheetContext) {
         return SafeArea(
           child: ListView(
@@ -627,6 +908,585 @@ class _CurrencyOption extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+class _RemindersSection extends StatelessWidget {
+  const _RemindersSection();
+
+  Future<void> _afterChange(BuildContext context, String message) async {
+    await ReminderSync.refresh();
+    if (!context.mounted) return;
+    AppToast.success(context, message);
+  }
+
+  String _formatTime(int hour, int minute) {
+    final h = hour.toString().padLeft(2, '0');
+    final m = minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    return ListenableBuilder(
+      listenable: AppSettingsStore.instance,
+      builder: (context, _) {
+        final store = AppSettingsStore.instance;
+        return _SettingsPanel(
+          colors: colors,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _SecurityToggleRow(
+                icon: Icons.notifications_active_rounded,
+                title: 'Phone notifications',
+                subtitle: 'Allow local reminders when Accountant is closed.',
+                value: store.notificationsEnabled,
+                colors: colors,
+                tint: colors.accent,
+                onChanged: (v) async {
+                  HapticFeedback.selectionClick();
+                  if (v) {
+                    await NotificationService.instance.requestPermission();
+                  }
+                  await store.setNotificationsEnabled(v);
+                  if (!context.mounted) return;
+                  await _afterChange(
+                    context,
+                    v ? 'Notifications on.' : 'Notifications off.',
+                  );
+                },
+              ),
+              Divider(height: 1, color: colors.border),
+              _SecurityToggleRow(
+                icon: Icons.edit_calendar_rounded,
+                title: 'Daily log reminder',
+                subtitle: 'Remind me to add spends at a set time.',
+                value: store.dailyLogReminderEnabled,
+                colors: colors,
+                tint: const Color(0xFFEA580C),
+                onChanged: (v) async {
+                  HapticFeedback.selectionClick();
+                  await store.setDailyLogReminderEnabled(v);
+                  if (!context.mounted) return;
+                  await _afterChange(context, 'Daily reminder updated.');
+                },
+              ),
+              if (store.dailyLogReminderEnabled) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 8, 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Reminder time · ${_formatTime(store.dailyLogReminderHour, store.dailyLogReminderMinute)}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: colors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () async {
+                          HapticFeedback.selectionClick();
+                          final picked = await showTimePicker(
+                            context: context,
+                            initialTime: TimeOfDay(
+                              hour: store.dailyLogReminderHour,
+                              minute: store.dailyLogReminderMinute,
+                            ),
+                          );
+                          if (picked == null) return;
+                          await store.setDailyLogReminderTime(
+                            picked.hour,
+                            picked.minute,
+                          );
+                          if (!context.mounted) return;
+                          await _afterChange(context, 'Reminder time saved.');
+                        },
+                        child: const Text('Change'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              Divider(height: 1, color: colors.border),
+              _SecurityToggleRow(
+                icon: Icons.pie_chart_outline_rounded,
+                title: 'Budget reminders',
+                subtitle:
+                    'Current month unplanned + next month (about 5 days before).',
+                value: store.budgetRemindersEnabled,
+                colors: colors,
+                tint: colors.success,
+                onChanged: (v) async {
+                  HapticFeedback.selectionClick();
+                  await store.setBudgetRemindersEnabled(v);
+                  if (!context.mounted) return;
+                  await _afterChange(context, 'Budget reminders updated.');
+                },
+              ),
+              Divider(height: 1, color: colors.border),
+              _SecurityToggleRow(
+                icon: Icons.event_repeat_rounded,
+                title: 'Scheduled payment reminders',
+                subtitle:
+                    'Alert within ${store.scheduledReminderLeadDays} days of due date.',
+                value: store.scheduledRemindersEnabled,
+                colors: colors,
+                tint: const Color(0xFF7C3AED),
+                onChanged: (v) async {
+                  HapticFeedback.selectionClick();
+                  await store.setScheduledRemindersEnabled(v);
+                  if (!context.mounted) return;
+                  await _afterChange(context, 'Scheduled reminders updated.');
+                },
+              ),
+              Divider(height: 1, color: colors.border),
+              _SecurityToggleRow(
+                icon: Icons.savings_outlined,
+                title: 'Planned reserves',
+                subtitle:
+                    'Home tip ~5 days before next cycle + fold into budget planning.',
+                value: store.plannedReservesEnabled,
+                colors: colors,
+                tint: const Color(0xFF0D9488),
+                onChanged: (v) async {
+                  HapticFeedback.selectionClick();
+                  await store.setPlannedReservesEnabled(v);
+                  if (!context.mounted) return;
+                  await _afterChange(context, 'Planned reserves updated.');
+                },
+              ),
+              if (store.plannedReservesEnabled)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'When planning next cycle',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: colors.textMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SegmentedButton<PlannedReserveAllocationMode>(
+                        segments: const [
+                          ButtonSegment(
+                            value: PlannedReserveAllocationMode.ask,
+                            label: Text('Ask me'),
+                          ),
+                          ButtonSegment(
+                            value: PlannedReserveAllocationMode.auto,
+                            label: Text('Auto-add'),
+                          ),
+                        ],
+                        selected: {store.plannedReserveAllocationMode},
+                        onSelectionChanged: (set) async {
+                          final mode = set.first;
+                          HapticFeedback.selectionClick();
+                          await store.setPlannedReserveAllocationMode(mode);
+                          if (!context.mounted) return;
+                          await _afterChange(
+                            context,
+                            mode == PlannedReserveAllocationMode.auto
+                                ? 'Will auto-add reserves to limits.'
+                                : 'Will ask before adding reserves.',
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              Divider(height: 1, color: colors.border),
+              _SecurityToggleRow(
+                icon: Icons.handshake_outlined,
+                title: 'Lend & borrow reminders',
+                subtitle:
+                    'Alert within ${store.debtReminderLeadDays} days of due date.',
+                value: store.debtRemindersEnabled,
+                colors: colors,
+                tint: const Color(0xFFD97706),
+                onChanged: (v) async {
+                  HapticFeedback.selectionClick();
+                  await store.setDebtRemindersEnabled(v);
+                  if (!context.mounted) return;
+                  await _afterChange(context, 'Debt reminders updated.');
+                },
+              ),
+              if (store.debtRemindersEnabled)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Lead days',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: colors.textMuted,
+                          ),
+                        ),
+                      ),
+                      for (final d in const [2, 3, 5])
+                        Padding(
+                          padding: const EdgeInsets.only(left: 6),
+                          child: ChoiceChip(
+                            label: Text('$d'),
+                            selected: store.debtReminderLeadDays == d,
+                            onSelected: (_) async {
+                              HapticFeedback.selectionClick();
+                              await store.setDebtReminderLeadDays(d);
+                              if (!context.mounted) return;
+                              await _afterChange(
+                                context,
+                                'Debt lead days · $d',
+                              );
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SecuritySection extends StatefulWidget {
+  const _SecuritySection();
+
+  @override
+  State<_SecuritySection> createState() => _SecuritySectionState();
+}
+
+class _SecuritySectionState extends State<_SecuritySection> {
+  bool _biometricAvailable = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBiometric();
+  }
+
+  Future<void> _loadBiometric() async {
+    final available = await BiometricAuth.instance.isAvailable();
+    if (!mounted) return;
+    setState(() => _biometricAvailable = available);
+  }
+
+  Future<bool> _confirmWithPin(BuildContext context) async {
+    final ok = await showUnlockSheet(
+      context,
+      title: 'Confirm PIN',
+      subtitle: 'Enter your PIN to change this setting.',
+    );
+    return ok == true;
+  }
+
+  Future<void> _enableLock(BuildContext context) async {
+    final lock = AppLockStore.instance;
+    if (!lock.hasPin) {
+      final saved = await showPinSetupSheet(context, title: 'Set a PIN');
+      if (saved == true && context.mounted) {
+        AppSession.instance.unlock();
+        AppToast.success(context, 'App lock enabled.');
+      }
+      return;
+    }
+    await lock.setEnabled(true);
+    if (context.mounted) AppToast.success(context, 'App lock enabled.');
+  }
+
+  Future<void> _disableLock(BuildContext context) async {
+    if (!await _confirmWithPin(context)) return;
+    await AppLockStore.instance.setEnabled(false);
+    SensitiveAccessSession.instance.lock();
+    if (context.mounted) AppToast.success(context, 'App lock turned off.');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+
+    return ListenableBuilder(
+      listenable: AppLockStore.instance,
+      builder: (context, _) {
+        final lock = AppLockStore.instance;
+        return _SettingsPanel(
+          colors: colors,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _SecurityToggleRow(
+                icon: Icons.lock_rounded,
+                title: 'App lock',
+                subtitle: lock.hasPin
+                    ? 'Require PIN when opening Accountant.'
+                    : 'Set a PIN to protect the app.',
+                value: lock.isEnabled && lock.hasPin,
+                colors: colors,
+                tint: const Color(0xFF475569),
+                onChanged: (v) async {
+                  HapticFeedback.selectionClick();
+                  if (v) {
+                    await _enableLock(context);
+                  } else {
+                    await _disableLock(context);
+                  }
+                },
+              ),
+              if (lock.hasPin) ...[
+                Divider(height: 1, color: colors.border),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF475569).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: const Color(0xFF475569).withValues(alpha: 0.22),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.pin_rounded,
+                          size: 20,
+                          color: Color(0xFF475569),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Change PIN',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: colors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () async {
+                          HapticFeedback.selectionClick();
+                          final ok = await showPinSetupSheet(
+                            context,
+                            title: 'Change PIN',
+                            currentPinRequired: 'verify',
+                          );
+                          if (ok == true && context.mounted) {
+                            AppToast.success(context, 'PIN updated.');
+                          }
+                        },
+                        child: const Text('Change'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (_biometricAvailable && lock.hasPin) ...[
+                Divider(height: 1, color: colors.border),
+                _SecurityToggleRow(
+                  icon: Icons.fingerprint_rounded,
+                  title: 'Fingerprint / Face ID',
+                  subtitle:
+                      'Unlock with biometrics. PIN is still required once a week.',
+                  value: lock.biometricEnabled && lock.isEnabled,
+                  colors: colors,
+                  tint: const Color(0xFF0891B2),
+                  onChanged: lock.isEnabled
+                      ? (v) async {
+                          HapticFeedback.selectionClick();
+                          if (v) {
+                            AppSession.instance.setAuthenticating(true);
+                            final ok = await BiometricAuth.instance.authenticate(
+                              reason: 'Enable biometrics for Accountant',
+                            );
+                            AppSession.instance.setAuthenticating(false);
+                            if (!ok) {
+                              if (context.mounted) {
+                                AppToast.warning(
+                                  context,
+                                  'Biometrics not confirmed.',
+                                );
+                              }
+                              return;
+                            }
+                          }
+                          await lock.setBiometricEnabled(v);
+                          if (context.mounted) {
+                            AppToast.success(
+                              context,
+                              v
+                                  ? 'Fingerprint / Face ID enabled.'
+                                  : 'Biometrics turned off.',
+                            );
+                          }
+                        }
+                      : null,
+                ),
+              ],
+              if (lock.hasPin && lock.biometricEnabled) ...[
+                Divider(height: 1, color: colors.border),
+                _SecurityToggleRow(
+                  icon: Icons.pin_outlined,
+                  title: 'Weekly PIN check',
+                  subtitle:
+                      'Every 7 days ask for PIN even if biometrics work.',
+                  value: lock.weeklyPinEnabled && lock.isEnabled,
+                  colors: colors,
+                  tint: const Color(0xFF0D9488),
+                  onChanged: lock.isEnabled
+                      ? (v) async {
+                          HapticFeedback.selectionClick();
+                          if (!v && !await _confirmWithPin(context)) return;
+                          await lock.setWeeklyPinEnabled(v);
+                          if (context.mounted) {
+                            AppToast.success(
+                              context,
+                              v
+                                  ? 'Weekly PIN check on.'
+                                  : 'Weekly PIN check off.',
+                            );
+                          }
+                        }
+                      : null,
+                ),
+              ],
+              if (lock.hasPin) ...[
+                Divider(height: 1, color: colors.border),
+                _SecurityToggleRow(
+                  icon: Icons.phonelink_lock_rounded,
+                  title: 'Lock when leaving app',
+                  subtitle:
+                      'Ask again after Accountant is in the background (~20s).',
+                  value: lock.lockOnResume && lock.isEnabled,
+                  colors: colors,
+                  tint: const Color(0xFFEA580C),
+                  onChanged: lock.isEnabled
+                      ? (v) async {
+                          HapticFeedback.selectionClick();
+                          await lock.setLockOnResume(v);
+                        }
+                      : null,
+                ),
+                Divider(height: 1, color: colors.border),
+                _SecurityToggleRow(
+                  icon: Icons.visibility_off_rounded,
+                  title: 'Protect account balances',
+                  subtitle:
+                      'Hide amounts on Home and Accounts until you unlock.',
+                  value: lock.protectAccountBalances,
+                  colors: colors,
+                  tint: const Color(0xFF7C3AED),
+                  onChanged: (v) async {
+                    HapticFeedback.selectionClick();
+                    if (v && !lock.hasPin) {
+                      await _enableLock(context);
+                      if (!context.mounted) return;
+                      if (!AppLockStore.instance.hasPin) return;
+                    }
+                    if (!v && lock.protectAccountBalances) {
+                      if (!await _confirmWithPin(context)) return;
+                      if (!context.mounted) return;
+                    }
+                    await lock.setProtectAccountBalances(v);
+                    SensitiveAccessSession.instance.lock();
+                    if (!context.mounted) return;
+                    AppToast.success(
+                      context,
+                      v
+                          ? 'Balances stay hidden until unlocked.'
+                          : 'Balance protection off.',
+                    );
+                  },
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SecurityToggleRow extends StatelessWidget {
+  const _SecurityToggleRow({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.colors,
+    required this.onChanged,
+    this.icon,
+    this.tint,
+  });
+
+  final String title;
+  final String subtitle;
+  final bool value;
+  final AppPalette colors;
+  final ValueChanged<bool>? onChanged;
+  final IconData? icon;
+  /// Behavior tint for the leading icon chip (defaults to accent).
+  final Color? tint;
+
+  @override
+  Widget build(BuildContext context) {
+    final chip = tint ?? colors.accent;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+      child: Row(
+        children: [
+          if (icon != null) ...[
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: chip.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: chip.withValues(alpha: 0.22)),
+              ),
+              child: Icon(icon, size: 20, color: chip),
+            ),
+            const SizedBox(width: 12),
+          ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: colors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 11, color: colors.textMuted),
+                ),
+              ],
+            ),
+          ),
+          Switch.adaptive(
+            value: value,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
     );
   }
 }

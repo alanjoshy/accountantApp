@@ -6,12 +6,12 @@ import 'package:flutter/services.dart';
 import '../../../../app/currency/currency_controller.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_spacing.dart';
-import '../../../../core/widgets/app_toast.dart';
 import '../../../activity/domain/cycle.dart';
 import '../../../settings/data/app_settings_store.dart';
 import '../../../transactions/data/transaction_store.dart';
 import '../../data/budget.dart';
 import '../../data/budget_store.dart';
+import '../../data/category_style.dart';
 import '../../domain/budget_logic.dart';
 import '../widgets/allocate_budget_sheet.dart';
 import '../widgets/budget_form_sheet.dart';
@@ -86,6 +86,11 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
           _CycleView.current => currentBudgets,
           _CycleView.next => nextView.budgets,
         };
+        // Main list: only categories with an allocated amount.
+        final listedBudgets = [
+          for (final b in viewBudgets)
+            if (b.limit > 0) b,
+        ];
         final viewBounds = switch (_view) {
           _CycleView.previous => previousBounds,
           _CycleView.current => currentBounds,
@@ -420,63 +425,164 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                       ),
                     ],
                     const SizedBox(height: 12),
-                    if (!incomeReady && _view == _CycleView.current)
+                    if (!incomeReady && _view != _CycleView.previous) ...[
                       _EmptyCard(
                         colors: colors,
-                        title: 'Set your monthly income',
+                        title: 'Plan your budget',
                         body:
-                            'Budgets allocate income across categories for this cash-flow cycle.',
-                        actionLabel: 'Add income',
-                        onAction: () => showIncomeSheet(context),
-                      )
-                    else if (viewBudgets.isEmpty)
+                            'Add your monthly income first, then allocate money to Food, Grocery, and other categories.',
+                        actionLabel: 'Set monthly income',
+                        onAction: () => showIncomeSheet(
+                          context,
+                          onSavedWithCategories: () {
+                            final cats = listedBudgetsForWindow(
+                              BudgetStore.instance.budgets,
+                              getCurrentCycleDayBounds(
+                                AppSettingsStore.instance.cycleStartDay,
+                              ),
+                              includeUndated: true,
+                            );
+                            if (cats.isEmpty) return;
+                            showAllocateBudgetSheet(
+                              context,
+                              budgets: cats,
+                              pool: AppSettingsStore.instance.monthlyIncome,
+                            );
+                          },
+                        ),
+                      ),
+                    ] else if (listedBudgets.isEmpty)
                       _EmptyCard(
                         colors: colors,
                         title: _view == _CycleView.previous
                             ? 'No last-cycle categories'
                             : _view == _CycleView.next
                                 ? 'No next-cycle plan yet'
-                                : 'No categories yet',
+                                : currentBudgets.isEmpty
+                                    ? 'No categories yet'
+                                    : 'Nothing allocated yet',
                         body: _view == _CycleView.current
-                            ? 'Add a category to allocate income and track spend.'
+                            ? (currentBudgets.isEmpty
+                                ? 'Tap + to add a category, then allocate income.'
+                                : 'Allocate income to categories to show them here.')
                             : _view == _CycleView.next
-                                ? 'Plan next cycle from This cycle, or wait for rollover.'
-                                : 'Nothing was saved for that cycle.',
-                        actionLabel: canEdit ? 'Add category' : null,
+                                ? 'Add categories in this cycle, then plan next.'
+                                : 'No saved categories for last cycle.',
+                        actionLabel: canEdit
+                            ? (currentBudgets.isEmpty
+                                ? 'Add category'
+                                : 'Allocate to categories')
+                            : null,
                         onAction: canEdit
-                            ? () => showBudgetFormSheet(context)
+                            ? () {
+                                if (currentBudgets.isEmpty) {
+                                  showBudgetFormSheet(context);
+                                } else {
+                                  showAllocateBudgetSheet(
+                                    context,
+                                    budgets: currentBudgets,
+                                    pool: settings.monthlyIncome,
+                                  );
+                                }
+                              }
                             : null,
                       )
-                    else
-                      for (final b in viewBudgets)
-                        _BudgetTile(
-                          key: ValueKey('${_view.name}-${b.id}-${b.limit}'),
-                          budget: b,
-                          spent: spentForBudget(
-                            b,
-                            txs,
-                            cycleStartDay: cycleDay,
-                          ),
-                          colors: colors,
-                          format: format,
-                          editable: canEdit ||
-                              (_view == _CycleView.next && !nextView.isPreview),
-                          onTap: () {
-                            if (_view == _CycleView.previous) return;
-                            if (_view == _CycleView.next && nextView.isPreview) {
-                              showNextCyclePlanSheet(
-                                context,
-                                currentCycleBudgets: cycleBudgets,
-                              );
-                              return;
-                            }
-                            if (!canEdit && _view != _CycleView.next) return;
-                            showBudgetFormSheet(context, budget: b);
-                          },
-                          onDelete: canEdit
-                              ? () => _confirmDelete(context, b)
-                              : null,
+                    else ...[
+                      Text(
+                        'Categories',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: colors.textPrimary,
                         ),
+                      ),
+                      const SizedBox(height: 8),
+                      Builder(
+                        builder: (context) {
+                          final lastMonth = previousCalendarMonth();
+                          final lastMonthShort =
+                              lastMonth.label.split(' ').first;
+                          final compactFmt =
+                              CurrencyController.instance.compact;
+                          final showLastMonth =
+                              _view == _CycleView.current;
+                          final spentLabel = _view == _CycleView.next
+                              ? 'Logged'
+                              : 'Consumed';
+
+                          return LayoutBuilder(
+                            builder: (context, constraints) {
+                              const gap = 10.0;
+                              final tileW =
+                                  (constraints.maxWidth - gap) / 2;
+                              return Wrap(
+                                spacing: gap,
+                                runSpacing: gap,
+                                children: [
+                                  for (final b in listedBudgets)
+                                    SizedBox(
+                                      width: tileW,
+                                      child: _BudgetTile(
+                                        key: ValueKey(
+                                          '${_view.name}-${b.id}-${b.limit}',
+                                        ),
+                                        budget: b,
+                                        spent: spentForBudget(
+                                          b,
+                                          txs,
+                                          cycleStartDay: cycleDay,
+                                        ),
+                                        lastMonthSpent: showLastMonth
+                                            ? spentInCalendarMonth(
+                                                b.category,
+                                                txs,
+                                                lastMonth.year,
+                                                lastMonth.monthIndex,
+                                              )
+                                            : null,
+                                        lastMonthShort: showLastMonth
+                                            ? lastMonthShort
+                                            : null,
+                                        spentLabel: spentLabel,
+                                        colors: colors,
+                                        compact: compactFmt,
+                                        editable: canEdit ||
+                                            (_view == _CycleView.next &&
+                                                !nextView.isPreview),
+                                        onTap: () {
+                                          if (_view ==
+                                              _CycleView.previous) {
+                                            return;
+                                          }
+                                          if (_view ==
+                                                  _CycleView.next &&
+                                              nextView.isPreview) {
+                                            showNextCyclePlanSheet(
+                                              context,
+                                              currentCycleBudgets:
+                                                  cycleBudgets,
+                                            );
+                                            return;
+                                          }
+                                          if (!canEdit &&
+                                              _view !=
+                                                  _CycleView.next) {
+                                            return;
+                                          }
+                                          showBudgetFormSheet(
+                                            context,
+                                            budget: b,
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                ],
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -487,37 +593,6 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     );
   }
 
-  Future<void> _confirmDelete(BuildContext context, Budget budget) async {
-    final colors = AppColors.of(context);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: colors.surfaceElevated,
-        title: Text(
-          'Remove category?',
-          style: TextStyle(color: colors.textPrimary),
-        ),
-        content: Text(
-          '“${budget.category}” will be removed from this period. Transactions are not deleted.',
-          style: TextStyle(color: colors.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: TextStyle(color: colors.textMuted)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Remove', style: TextStyle(color: colors.error)),
-          ),
-        ],
-      ),
-    );
-    if (ok != true || !context.mounted) return;
-    await BudgetStore.instance.delete(budget.id);
-    if (!context.mounted) return;
-    AppToast.warning(context, 'Category removed.');
-  }
 }
 
 class _CycleTabs extends StatelessWidget {
@@ -710,112 +785,171 @@ class _BudgetTile extends StatelessWidget {
     required this.budget,
     required this.spent,
     required this.colors,
-    required this.format,
+    required this.compact,
     required this.editable,
     required this.onTap,
-    this.onDelete,
+    required this.spentLabel,
+    this.lastMonthSpent,
+    this.lastMonthShort,
   });
 
   final Budget budget;
   final double spent;
   final AppPalette colors;
-  final String Function(double) format;
+  final String Function(double) compact;
   final bool editable;
   final VoidCallback onTap;
-  final VoidCallback? onDelete;
+  final String spentLabel;
+  final double? lastMonthSpent;
+  final String? lastMonthShort;
 
   @override
   Widget build(BuildContext context) {
-    final remaining = (budget.limit - spent).clamp(0.0, double.infinity);
-    final ratio = budget.limit > 0 ? (spent / budget.limit).clamp(0.0, 1.5) : 0.0;
+    final balance = (budget.limit - spent).clamp(0.0, double.infinity);
+    final ratio =
+        budget.limit > 0 ? (spent / budget.limit).clamp(0.0, 1.0) : 0.0;
     final over = spent > budget.limit && budget.limit > 0;
+    final accent = categoryColorFromHex(budget.color);
+    final lastAllocated = budget.limit;
+    final lastUsed = lastMonthSpent ?? 0;
+    final lastOver = lastAllocated > 0 && lastUsed > lastAllocated;
+    final showLast = lastMonthShort != null && lastMonthSpent != null;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Material(
-        color: colors.surfaceElevated,
+    return Material(
+      color: colors.surfaceHover.withValues(alpha: 0.6),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: editable ? onTap : null,
         borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          onTap: editable ? onTap : null,
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: colors.border),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            budget.category,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: colors.textPrimary,
-                            ),
-                          ),
-                          Text(
-                            budget.hasCustomRange
-                                ? '${budget.startDate} – ${budget.endDate}'
-                                : 'This cycle',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: colors.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: colors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: accent,
+                      shape: BoxShape.circle,
                     ),
-                    Text(
-                      format(budget.limit),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(
+                    categoryIconData(budget.icon),
+                    size: 14,
+                    color: accent,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      budget.category,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
+                        fontSize: 12,
                         fontWeight: FontWeight.w700,
                         color: colors.textPrimary,
                       ),
                     ),
-                    if (onDelete != null)
-                      IconButton(
-                        tooltip: 'Remove',
-                        onPressed: onDelete,
-                        icon: Icon(
-                          Icons.delete_outline_rounded,
-                          color: colors.error,
-                        ),
-                      ),
-                  ],
-                ),
-                if (budget.limit > 0) ...[
-                  const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(999),
-                    child: LinearProgressIndicator(
-                      value: ratio.clamp(0.02, 1),
-                      minHeight: 6,
-                      backgroundColor: colors.surfaceHover,
-                      color: over ? colors.error : colors.accent,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    over
-                        ? 'Spent ${format(spent)} · over by ${format(spent - budget.limit)}'
-                        : 'Spent ${format(spent)} · ${format(remaining)} left',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: over ? colors.error : colors.textMuted,
-                    ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: budget.limit > 0 ? ratio.clamp(0.02, 1) : 0,
+                  minHeight: 8,
+                  backgroundColor: colors.surfaceElevated,
+                  color: over ? colors.error : colors.accent,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _StatRow(
+                label: spentLabel,
+                value: compact(spent),
+                valueColor: over ? colors.error : colors.accent,
+                colors: colors,
+              ),
+              _StatRow(
+                label: 'Allocated',
+                value: compact(budget.limit),
+                colors: colors,
+              ),
+              _StatRow(
+                label: 'Balance',
+                value: over ? 'Over' : compact(balance),
+                valueColor: over ? colors.error : colors.textPrimary,
+                colors: colors,
+              ),
+              if (showLast) ...[
+                _StatRow(
+                  label: '$lastMonthShort allocated',
+                  value: compact(lastAllocated),
+                  colors: colors,
+                ),
+                _StatRow(
+                  label: '$lastMonthShort consumed',
+                  value: compact(lastUsed),
+                  valueColor: lastOver ? colors.error : colors.textPrimary,
+                  colors: colors,
+                ),
               ],
-            ),
+            ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _StatRow extends StatelessWidget {
+  const _StatRow({
+    required this.label,
+    required this.value,
+    required this.colors,
+    this.valueColor,
+  });
+
+  final String label;
+  final String value;
+  final AppPalette colors;
+  final Color? valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10,
+                color: colors.textMuted,
+              ),
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              fontFeatures: const [FontFeature.tabularFigures()],
+              color: valueColor ?? colors.textPrimary,
+            ),
+          ),
+        ],
       ),
     );
   }

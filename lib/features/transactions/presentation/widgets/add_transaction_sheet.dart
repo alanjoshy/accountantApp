@@ -1,23 +1,29 @@
-// Add income / expense sheet (dock +).
+// Add spend / income sheet (web AddTransactionSheet parity).
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../../app/currency/currency_controller.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_spacing.dart';
+import '../../../../core/widgets/app_sheet.dart';
 import '../../../../core/widgets/app_toast.dart';
+import '../../../accounts/data/account_store.dart';
+import '../../../accounts/domain/payments.dart';
+import '../../../accounts/presentation/widgets/account_chip_picker.dart';
+import '../../../accounts/presentation/widgets/payment_mode_picker.dart';
+import '../../../budgets/data/budget_store.dart';
+import '../../../budgets/domain/budget_logic.dart';
 import '../../../settings/data/app_settings_store.dart';
 import '../../data/transaction.dart';
 import '../../data/transaction_store.dart';
+import '../../domain/transaction_categories.dart';
+import 'category_option_chip.dart';
+import 'tag_picker.dart';
 
 Future<void> showAddTransactionSheet(BuildContext context) {
-  return showModalBottomSheet<void>(
+  return showAppSheet<void>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: AppColors.of(context).surfaceElevated,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
     builder: (_) => const AddTransactionSheet(),
   );
 }
@@ -32,21 +38,84 @@ class AddTransactionSheet extends StatefulWidget {
 class _AddTransactionSheetState extends State<AddTransactionSheet> {
   final _title = TextEditingController();
   final _amount = TextEditingController();
-  final _category = TextEditingController();
   final _note = TextEditingController();
   TransactionType _type = TransactionType.expense;
   DateTime _date = DateTime.now();
-  final _selectedTags = <String>{};
+  String _category = spendCategories.first;
+  late PaymentMode _paymentMode;
+  String? _accountId;
+  final _selectedTags = <String>[];
+  bool _moreOpen = false;
   bool _saving = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final settings = AppSettingsStore.instance;
+    _category = _defaultExpenseCategory();
+    _paymentMode = settings.defaultPaymentMode;
+    final accounts = AccountStore.instance.accounts;
+    final preferred = settings.defaultAccountId;
+    final stillExists = accounts.any((a) => a.id == preferred);
+    _accountId = stillExists
+        ? preferred
+        : (accounts.isNotEmpty ? accounts.first.id : null);
+    final key = settings.resolveDefaultTransactionDate();
+    final parts = key.split('-');
+    if (parts.length == 3) {
+      _date = DateTime(
+        int.parse(parts[0]),
+        int.parse(parts[1]),
+        int.parse(parts[2]),
+      );
+    }
+    final tag = settings.defaultTag;
+    if (tag != null && tag.isNotEmpty) {
+      _selectedTags.add(tag);
+      _moreOpen = true;
+    }
+  }
 
   @override
   void dispose() {
     _title.dispose();
     _amount.dispose();
-    _category.dispose();
     _note.dispose();
     super.dispose();
+  }
+
+  List<String> _categories() {
+    if (_type == TransactionType.income) {
+      return categoriesForType(TransactionType.income);
+    }
+    final budgetCats = BudgetStore.instance.budgets.map((b) => b.category);
+    return sortCategoriesByUsage(
+      expenseCategoriesWithBudgets(budgetCats),
+      TransactionStore.instance.transactions,
+    );
+  }
+
+  String _defaultExpenseCategory() {
+    final budgetCats = BudgetStore.instance.budgets.map((b) => b.category);
+    return pickDefaultExpenseCategory(
+      expenseCategoriesWithBudgets(budgetCats),
+      TransactionStore.instance.transactions,
+      fallback: AppSettingsStore.instance.defaultCategory,
+    );
+  }
+
+  Map<String, double> _usageByCategory() {
+    if (_type != TransactionType.expense) return const {};
+    final cycleDay = AppSettingsStore.instance.cycleStartDay;
+    final txs = TransactionStore.instance.transactions;
+    final map = <String, double>{};
+    for (final b in BudgetStore.instance.budgets) {
+      if (b.limit <= 0) continue;
+      final spent = spentForBudget(b, txs, cycleStartDay: cycleDay);
+      map[b.category] = (spent / b.limit) * 100;
+    }
+    return map;
   }
 
   Future<void> _pickDate() async {
@@ -61,43 +130,52 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
 
   Future<void> _submit() async {
     setState(() => _error = null);
-    final title = _title.text.trim();
-    if (title.isEmpty) {
-      setState(() => _error = 'Enter a title.');
-      HapticFeedback.heavyImpact();
-      return;
-    }
     final amount = double.tryParse(_amount.text.trim());
     if (amount == null || amount <= 0) {
       setState(() => _error = 'Enter an amount above zero.');
       HapticFeedback.heavyImpact();
       return;
     }
-    final category = _category.text.trim();
-    if (category.isEmpty) {
-      setState(() => _error = 'Enter a category.');
+    final title = _title.text.trim();
+    if (title.isEmpty) {
+      setState(() => _error = _type == TransactionType.expense
+          ? 'What was this for?'
+          : 'Where is this from?');
+      HapticFeedback.heavyImpact();
+      return;
+    }
+    if (_category.trim().isEmpty) {
+      setState(() => _error = 'Pick a category.');
       HapticFeedback.heavyImpact();
       return;
     }
 
     setState(() => _saving = true);
     try {
+      final dayKey =
+          '${_date.year}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}';
       await TransactionStore.instance.add(
         title: title,
         amount: amount,
         type: _type,
-        category: category,
-        date: _date.toIso8601String(),
+        category: _category.trim(),
+        // Store calendar day only so cycle filters never shift by timezone.
+        date: dayKey,
         note: _note.text.trim(),
-        tags: _selectedTags.toList(),
+        tags: _selectedTags,
+        paymentMode: _paymentMode,
+        accountId: _accountId,
       );
+      await AppSettingsStore.instance.setLastTransactionDate(dayKey);
       if (!mounted) return;
       Navigator.pop(context);
       AppToast.success(context, 'Transaction saved.');
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = "Couldn't save this transaction.";
+        _error = e is StateError
+            ? e.message
+            : "Couldn't save this transaction.";
         _saving = false;
       });
       HapticFeedback.heavyImpact();
@@ -108,7 +186,19 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    final tags = AppSettingsStore.instance.tags;
+    final symbol = CurrencyController.instance.symbol;
+    final categories = _categories();
+    final usage = _usageByCategory();
+    if (!categories.contains(_category) && categories.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          _category = _type == TransactionType.expense
+              ? _defaultExpenseCategory()
+              : categories.first;
+        });
+      });
+    }
 
     return SafeArea(
       child: Padding(
@@ -135,7 +225,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
               ),
               const SizedBox(height: 14),
               Text(
-                'Add transaction',
+                _type == TransactionType.expense ? 'Add spend' : 'Add income',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
@@ -146,32 +236,42 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
               DecoratedBox(
                 decoration: BoxDecoration(
                   color: colors.surfaceHover,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: colors.border),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(3),
+                  padding: const EdgeInsets.all(4),
                   child: Row(
                     children: [
                       for (final (type, label) in [
-                        (TransactionType.expense, 'Expense'),
-                        (TransactionType.income, 'Income'),
+                        (TransactionType.expense, 'Spent'),
+                        (TransactionType.income, 'Received'),
                       ])
                         Expanded(
                           child: Material(
                             color: _type == type
                                 ? colors.accent
                                 : Colors.transparent,
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(12),
                             child: InkWell(
                               onTap: () {
                                 HapticFeedback.selectionClick();
-                                setState(() => _type = type);
+                                setState(() {
+                                  _type = type;
+                                  final cats = type == TransactionType.income
+                                      ? categoriesForType(TransactionType.income)
+                                      : _categories();
+                                  if (!cats.contains(_category)) {
+                                    _category = type == TransactionType.expense
+                                        ? _defaultExpenseCategory()
+                                        : cats.first;
+                                  }
+                                });
                               },
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(12),
                               child: Padding(
                                 padding:
-                                    const EdgeInsets.symmetric(vertical: 10),
+                                    const EdgeInsets.symmetric(vertical: 12),
                                 child: Text(
                                   label,
                                   textAlign: TextAlign.center,
@@ -191,32 +291,46 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              _label('Title', colors),
-              TextField(
-                controller: _title,
-                textInputAction: TextInputAction.next,
-                decoration: _decoration(colors, 'e.g. Groceries'),
-              ),
-              const SizedBox(height: 12),
-              _label('Amount', colors),
+              const SizedBox(height: 14),
+              _label('How much?', colors),
               TextField(
                 controller: _amount,
+                autofocus: true,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
                 ],
-                decoration: _decoration(colors, '0'),
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: colors.textPrimary,
+                ),
+                decoration: _decoration(colors, '0').copyWith(
+                  prefixText: '$symbol ',
+                  prefixStyle: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    color: colors.textMuted,
+                  ),
+                ),
               ),
-              const SizedBox(height: 12),
-              _label('Category', colors),
+              const SizedBox(height: 14),
+              _label(
+                _type == TransactionType.expense ? 'What for?' : 'From where?',
+                colors,
+              ),
               TextField(
-                controller: _category,
+                controller: _title,
                 textInputAction: TextInputAction.next,
-                decoration: _decoration(colors, 'e.g. Food'),
+                decoration: _decoration(
+                  colors,
+                  _type == TransactionType.expense
+                      ? 'e.g. Lunch, Uber, groceries'
+                      : 'e.g. Salary, freelance',
+                ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               _label('Date', colors),
               OutlinedButton(
                 onPressed: _pickDate,
@@ -226,39 +340,106 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                   alignment: Alignment.centerLeft,
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 child: Text(
                   '${_date.year}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}',
                 ),
               ),
-              const SizedBox(height: 12),
-              _label('Note (optional)', colors),
-              TextField(
-                controller: _note,
-                decoration: _decoration(colors, 'Optional note'),
+              const SizedBox(height: 14),
+              _label('Category', colors),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: categories.map((c) {
+                  final style = resolveCategoryStyle(
+                    c,
+                    budgets: BudgetStore.instance.budgets,
+                  );
+                  return CategoryOptionChip(
+                    label: c,
+                    selected: _category == c,
+                    usagePct: usage[c],
+                    icon: style.icon,
+                    accentColor: style.color,
+                    onTap: () => setState(() => _category = c),
+                  );
+                }).toList(),
               ),
-              if (tags.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              _label('Payment mode', colors),
+              PaymentModePicker(
+                value: _paymentMode,
+                defaultId: AppSettingsStore.instance.defaultPaymentMode,
+                onChanged: (m) => setState(() => _paymentMode = m),
+              ),
+              const SizedBox(height: 14),
+              _label('Account', colors),
+              AccountChipPicker(
+                accounts: AccountStore.instance.accounts,
+                value: _accountId,
+                defaultId: AppSettingsStore.instance.defaultAccountId,
+                onChanged: (id) => setState(() => _accountId = id),
+              ),
+              const SizedBox(height: 8),
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setState(() => _moreOpen = !_moreOpen);
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Tags & note (optional)',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: colors.textSecondary,
+                            ),
+                          ),
+                        ),
+                        Icon(
+                          _moreOpen
+                              ? Icons.expand_less_rounded
+                              : Icons.expand_more_rounded,
+                          color: colors.textMuted,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              if (_moreOpen) ...[
+                ListenableBuilder(
+                  listenable: AppSettingsStore.instance,
+                  builder: (context, _) {
+                    return TagPicker(
+                      availableTags: AppSettingsStore.instance.tags,
+                      selected: _selectedTags,
+                      onChange: (next) => setState(() {
+                        _selectedTags
+                          ..clear()
+                          ..addAll(next);
+                      }),
+                      onCreateTag: AppSettingsStore.instance.addTag,
+                    );
+                  },
+                ),
                 const SizedBox(height: 12),
-                _label('Tags', colors),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final tag in tags)
-                      FilterChip(
-                        label: Text(tag),
-                        selected: _selectedTags.contains(tag),
-                        onSelected: (v) {
-                          setState(() {
-                            if (v) {
-                              _selectedTags.add(tag);
-                            } else {
-                              _selectedTags.remove(tag);
-                            }
-                          });
-                        },
-                      ),
-                  ],
+                _label('Note', colors),
+                TextField(
+                  controller: _note,
+                  maxLines: 2,
+                  decoration:
+                      _decoration(colors, 'Anything else to remember'),
                 ),
               ],
               const SizedBox(height: 18),

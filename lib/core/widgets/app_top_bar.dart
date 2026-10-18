@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/theme/app_colors.dart';
+import '../../features/reminders/data/notification_inbox_store.dart';
+import '../../features/reminders/presentation/widgets/notifications_sheet.dart';
 import '../navigation/app_tab.dart';
+import 'app_sheet.dart';
 import 'app_toast.dart';
 
 class AppTopBar extends StatelessWidget {
@@ -102,23 +105,45 @@ class AppTopBar extends StatelessWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        _IconBtn(
-                          tooltip: 'Notifications',
-                          colors: colors,
-                          onTap: () {
-                            HapticFeedback.lightImpact();
-                            AppToast.show(
-                              context,
-                              'No new notifications.',
-                              tone: AppToastTone.info,
-                              title: 'Notifications',
+                        ListenableBuilder(
+                          listenable: NotificationInboxStore.instance,
+                          builder: (context, _) {
+                            final unread =
+                                NotificationInboxStore.instance.unreadCount;
+                            return Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                _IconBtn(
+                                  tooltip: 'Notifications',
+                                  colors: colors,
+                                  onTap: () {
+                                    HapticFeedback.lightImpact();
+                                    showNotificationsSheet(context);
+                                  },
+                                  child: Icon(
+                                    unread > 0
+                                        ? Icons.notifications_rounded
+                                        : Icons.notifications_none_rounded,
+                                    size: 18,
+                                    color: colors.textSecondary,
+                                  ),
+                                ),
+                                if (unread > 0)
+                                  Positioned(
+                                    right: 2,
+                                    top: 2,
+                                    child: Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                        color: colors.error,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             );
                           },
-                          child: Icon(
-                            Icons.notifications_none_rounded,
-                            size: 18,
-                            color: colors.textSecondary,
-                          ),
                         ),
                         const SizedBox(width: 8),
                         _IconBtn(
@@ -149,13 +174,8 @@ class AppTopBar extends StatelessWidget {
 
   void _openProfileSheet(BuildContext context) {
     final colors = AppColors.of(context);
-    showModalBottomSheet<void>(
+    showAppSheet<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: colors.surfaceElevated,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (ctx) {
         return Padding(
           padding: EdgeInsets.only(

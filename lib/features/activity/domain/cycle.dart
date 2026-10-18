@@ -75,6 +75,28 @@ int cycleDayCount(int startDay, [DateTime? ref]) {
   return days < 1 ? 1 : days;
 }
 
+int daysUntilNextCycle(int startDay, [DateTime? ref]) {
+  final now = ref ?? DateTime.now();
+  final today = dateOnly(now);
+  final next = getNextCycleStart(startDay, now);
+  return next.difference(today).inDays;
+}
+
+/// How many days before the next cycle the planner / reminder may appear.
+const nextCyclePlanLeadDays = 5;
+
+/// Mid-month starts stay in that calendar month (5th → from the 1st).
+int nextCyclePlanWindowDays(int startDay) {
+  final day = clampCycleStartDay(startDay);
+  if (day <= 1) return nextCyclePlanLeadDays;
+  return day - 1 < nextCyclePlanLeadDays ? day - 1 : nextCyclePlanLeadDays;
+}
+
+bool isNextCyclePlanningWindow(int startDay, [DateTime? ref]) {
+  final days = daysUntilNextCycle(startDay, ref);
+  return days > 0 && days <= nextCyclePlanWindowDays(startDay);
+}
+
 int cycleElapsedDays(int startDay, [DateTime? ref]) {
   final now = ref ?? DateTime.now();
   final range = getCurrentCycleRange(startDay, now);

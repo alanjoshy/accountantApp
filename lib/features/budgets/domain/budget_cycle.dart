@@ -39,6 +39,8 @@ List<Budget> copyCycleRows({
         period: 'monthly',
         startDate: target.start,
         endDate: target.end,
+        icon: b.icon,
+        color: b.color,
         createdAt: now,
       ),
   ];

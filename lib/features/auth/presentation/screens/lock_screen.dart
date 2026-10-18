@@ -10,6 +10,8 @@ import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_spacing.dart';
 import '../../../../app/theme/app_text_styles.dart';
 import '../../data/app_lock_store.dart';
+import '../../domain/app_session.dart';
+import '../../domain/biometric_auth.dart';
 import '../../domain/pin_crypto.dart';
 import '../widgets/pin_entry.dart';
 
@@ -19,12 +21,14 @@ class LockScreen extends StatefulWidget {
     this.hasPin,
     this.verifyPin,
     this.savePin,
+    this.tryBiometricOnStart = true,
   });
 
   /// Optional seams for tests — defaults to [AppLockStore].
   final bool Function()? hasPin;
   final bool Function(String pin)? verifyPin;
   final Future<void> Function(String pin)? savePin;
+  final bool tryBiometricOnStart;
 
   @override
   State<LockScreen> createState() => _LockScreenState();
@@ -39,19 +43,73 @@ class _LockScreenState extends State<LockScreen> {
   bool _confirmStep = false;
   Timer? _verifyTimer;
   bool _verifying = false;
+  bool _biometricAvailable = false;
+  BiometricKind _biometricKind = BiometricKind.none;
 
-  bool get _hasPin => widget.hasPin?.call() ?? AppLockStore.hasPin;
+  bool get _hasPin => widget.hasPin?.call() ?? AppLockStore.instance.hasPin;
 
   bool _verify(String pin) =>
-      widget.verifyPin?.call(pin) ?? AppLockStore.verify(pin);
+      widget.verifyPin?.call(pin) ?? AppLockStore.instance.verify(pin);
 
   Future<void> _save(String pin) =>
-      widget.savePin?.call(pin) ?? AppLockStore.setPin(pin);
+      widget.savePin?.call(pin) ?? AppLockStore.instance.setPin(pin);
+
+  bool get _weeklyPinDue => AppLockStore.instance.requiresWeeklyPin();
+
+  bool get _canBiometric =>
+      _biometricAvailable && AppLockStore.instance.canUseBiometricUnlock;
 
   @override
   void initState() {
     super.initState();
     _setupMode = !_hasPin;
+    if (!_setupMode && widget.tryBiometricOnStart) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _probeBiometric();
+      });
+    }
+  }
+
+  Future<void> _probeBiometric() async {
+    final available = await BiometricAuth.instance.isAvailable();
+    final kind = available
+        ? await BiometricAuth.instance.preferredKind()
+        : BiometricKind.none;
+    if (!mounted) return;
+    setState(() {
+      _biometricAvailable = available;
+      _biometricKind = kind;
+    });
+    if (available && AppLockStore.instance.canUseBiometricUnlock) {
+      await _tryBiometric();
+    }
+  }
+
+  Future<void> _tryBiometric() async {
+    if (_setupMode || _busy) return;
+    if (!AppLockStore.instance.canUseBiometricUnlock) return;
+    AppSession.instance.setAuthenticating(true);
+    setState(() => _busy = true);
+    final ok = await BiometricAuth.instance.authenticate(
+      reason: 'Unlock Accountant',
+    );
+    AppSession.instance.setAuthenticating(false);
+    if (!mounted) return;
+    if (ok) {
+      HapticFeedback.mediumImpact();
+      _enterApp(viaPin: false);
+      return;
+    }
+    setState(() => _busy = false);
+  }
+
+  Future<void> _enterApp({required bool viaPin}) async {
+    if (viaPin) {
+      await AppLockStore.instance.markPinUnlock();
+    }
+    AppSession.instance.unlock();
+    if (!mounted) return;
+    Navigator.of(context).pushReplacementNamed(AppRouter.home);
   }
 
   @override
@@ -71,7 +129,8 @@ class _LockScreenState extends State<LockScreen> {
         _maybeConfirmSetup(next);
       } else if (PinCrypto.isValid(next)) {
         _verifyTimer?.cancel();
-        final delay = next.length == 6 ? Duration.zero : const Duration(milliseconds: 450);
+        final delay =
+            next.length == 6 ? Duration.zero : const Duration(milliseconds: 450);
         _verifyTimer = Timer(delay, () {
           if (!mounted) return;
           setState(() {
@@ -87,14 +146,16 @@ class _LockScreenState extends State<LockScreen> {
     if (!PinCrypto.isValid(next) || _verifying) return;
 
     _verifyTimer?.cancel();
-    final delay = next.length == 6 ? Duration.zero : const Duration(milliseconds: 550);
+    final delay =
+        next.length == 6 ? Duration.zero : const Duration(milliseconds: 550);
     _verifyTimer = Timer(delay, () => _unlock(next));
   }
 
   void _maybeConfirmSetup(String next) {
     if (!PinCrypto.isValid(next)) return;
     _verifyTimer?.cancel();
-    final delay = next.length == 6 ? Duration.zero : const Duration(milliseconds: 450);
+    final delay =
+        next.length == 6 ? Duration.zero : const Duration(milliseconds: 450);
     _verifyTimer = Timer(delay, () async {
       if (!mounted) return;
       if (next != _confirmPin) {
@@ -111,7 +172,7 @@ class _LockScreenState extends State<LockScreen> {
       await _save(next);
       if (!mounted) return;
       HapticFeedback.mediumImpact();
-      Navigator.of(context).pushReplacementNamed(AppRouter.home);
+      await _enterApp(viaPin: true);
     });
   }
 
@@ -125,7 +186,7 @@ class _LockScreenState extends State<LockScreen> {
 
     if (ok) {
       HapticFeedback.mediumImpact();
-      Navigator.of(context).pushReplacementNamed(AppRouter.home);
+      await _enterApp(viaPin: true);
       return;
     }
 
@@ -144,7 +205,12 @@ class _LockScreenState extends State<LockScreen> {
   }
 
   String get _subtitle {
-    if (!_setupMode) return 'Enter your PIN to continue.';
+    if (!_setupMode) {
+      if (_weeklyPinDue && AppLockStore.instance.biometricEnabled) {
+        return 'Weekly PIN check — enter your PIN to continue.';
+      }
+      return 'Enter your PIN to continue.';
+    }
     return _confirmStep
         ? 'Enter the same PIN again.'
         : 'Choose a 4–6 digit PIN to lock Accountant.';
@@ -160,6 +226,11 @@ class _LockScreenState extends State<LockScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
+    final showBio = !_setupMode && _canBiometric;
+    final weeklyNote = !_setupMode &&
+        _weeklyPinDue &&
+        AppLockStore.instance.biometricEnabled &&
+        _biometricAvailable;
 
     return Scaffold(
       backgroundColor: colors.background,
@@ -226,6 +297,29 @@ class _LockScreenState extends State<LockScreen> {
                             hint: _hint,
                             autoFocus: true,
                           ),
+                          if (weeklyNote) ...[
+                            const SizedBox(height: AppSpacing.md),
+                            Text(
+                              'Fingerprint / Face ID unlock again after this PIN.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colors.textMuted,
+                              ),
+                            ),
+                          ],
+                          if (showBio) ...[
+                            const SizedBox(height: AppSpacing.md),
+                            TextButton.icon(
+                              onPressed: _busy ? null : _tryBiometric,
+                              icon: Icon(
+                                BiometricAuth.instance.iconFor(_biometricKind),
+                              ),
+                              label: Text(
+                                BiometricAuth.instance.labelFor(_biometricKind),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),

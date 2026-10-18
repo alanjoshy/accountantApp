@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../../../app/currency/currency_controller.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_spacing.dart';
+import '../../../../core/widgets/app_sheet.dart';
 import '../../../../core/widgets/app_toast.dart';
 import '../../../settings/data/app_settings_store.dart';
 
@@ -13,13 +14,8 @@ Future<void> showIncomeSheet(
   BuildContext context, {
   VoidCallback? onSavedWithCategories,
 }) {
-  return showModalBottomSheet<void>(
+  return showAppSheet<void>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: AppColors.of(context).surfaceElevated,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
     builder: (_) => IncomeSheet(onSavedWithCategories: onSavedWithCategories),
   );
 }
@@ -124,7 +120,7 @@ class _IncomeSheetState extends State<IncomeSheet> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Used as the pool you allocate across categories.',
+              'This is your budget pool for the cycle. Next you’ll split it across categories.',
               style: TextStyle(fontSize: 12, color: colors.textMuted),
             ),
             const SizedBox(height: 14),

@@ -107,4 +107,41 @@ void main() {
     expect(clampCycleStartDay(0), 1);
     expect(clampCycleStartDay(40), 28);
   });
+
+  test('Activity month filter uses cash-flow cycle start day', () {
+    final ref = DateTime(2026, 10, 12, 12);
+    final range = getActivityPeriodRange(
+      ActivityPeriodFilter.month,
+      now: ref,
+      cycleStartDay: 25,
+    );
+    expect(range, isNotNull);
+    expect(range!.start, DateTime(2026, 9, 25));
+    expect(range.end.year, 2026);
+    expect(range.end.month, 10);
+    expect(range.end.day, 24);
+
+    final list = [
+      _tx(
+        id: 'in',
+        type: TransactionType.expense,
+        amount: 10,
+        date: '2026-09-26T10:00:00.000',
+      ),
+      _tx(
+        id: 'out',
+        type: TransactionType.expense,
+        amount: 10,
+        date: '2026-09-20T10:00:00.000',
+      ),
+    ];
+    final filtered = filterActivityTransactions(
+      list,
+      type: ActivityTypeFilter.all,
+      period: ActivityPeriodFilter.month,
+      now: ref,
+      cycleStartDay: 25,
+    );
+    expect(filtered.map((t) => t.id), ['in']);
+  });
 }

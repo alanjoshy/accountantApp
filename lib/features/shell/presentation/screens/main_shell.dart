@@ -28,8 +28,8 @@ class _MainShellState extends State<MainShell>
     MoreScreen(),
   ];
 
-  static const _duration = Duration(milliseconds: 180);
-  static const _slide = 12.0;
+  static const _duration = Duration(milliseconds: 230);
+  static const _slide = 16.0;
 
   late AppTab _tab = widget.initialTab;
   late AppTab _previous = widget.initialTab;
@@ -158,7 +158,8 @@ class _TabPageSlot extends StatelessWidget {
       child: page,
       builder: (context, child) {
         final t = Curves.easeOutCubic.transform(motion.value);
-        final opacity = selected ? t : 1 - t;
+        // Keep a floor on opacity so hit-testing never fully “ghosts” mid-fade.
+        final opacity = (selected ? t : 1 - t).clamp(0.0, 1.0);
         final dx = selected
             ? slide * direction * (1 - t)
             : -slide * direction * t;

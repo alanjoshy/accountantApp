@@ -1,28 +1,29 @@
-// Budget balance — live category tiles (web BudgetBalance).
+// Budget balance — live category tiles (web BudgetBalance + weekly toggle).
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../../app/currency/currency_controller.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../activity/domain/cycle.dart';
 import '../../../budgets/data/budget_store.dart';
+import '../../../budgets/data/category_style.dart';
 import '../../../budgets/domain/budget_logic.dart';
+import '../../../budgets/domain/budget_week.dart';
 import '../../../settings/data/app_settings_store.dart';
 import '../../../transactions/data/transaction_store.dart';
 
-const _dotColors = <Color>[
-  Color(0xFF3B82F6),
-  Color(0xFF22C55E),
-  Color(0xFFF59E0B),
-  Color(0xFFEF4444),
-  Color(0xFFA855F7),
-  Color(0xFF06B6D4),
-  Color(0xFFEC4899),
-  Color(0xFF84CC16),
-];
+enum _BalanceMode { monthly, weekly }
 
-class BudgetBalanceCard extends StatelessWidget {
+class BudgetBalanceCard extends StatefulWidget {
   const BudgetBalanceCard({super.key});
+
+  @override
+  State<BudgetBalanceCard> createState() => _BudgetBalanceCardState();
+}
+
+class _BudgetBalanceCardState extends State<BudgetBalanceCard> {
+  _BalanceMode _mode = _BalanceMode.weekly;
 
   @override
   Widget build(BuildContext context) {
@@ -43,12 +44,21 @@ class BudgetBalanceCard extends StatelessWidget {
           bounds,
           includeUndated: true,
         );
-        final rows = buildBudgetBalanceRows(
+        final monthlyRows = buildBudgetBalanceRows(
           current,
           TransactionStore.instance.transactions,
           cycleStartDay: cycleDay,
         );
-        if (rows.isEmpty) return const SizedBox.shrink();
+        if (monthlyRows.isEmpty) return const SizedBox.shrink();
+
+        final week = currentWeekInMonth();
+        final rows = _mode == _BalanceMode.weekly
+            ? buildWeeklyBudgetBalanceRows(
+                monthlyRows,
+                TransactionStore.instance.transactions,
+              )
+            : monthlyRows;
+        final byId = {for (final b in current) b.id: b};
 
         var totalBudget = 0.0;
         var totalLeft = 0.0;
@@ -57,6 +67,9 @@ class BudgetBalanceCard extends StatelessWidget {
           totalLeft += r.remaining;
         }
         final compact = CurrencyController.instance.compact;
+        final subtitle = _mode == _BalanceMode.weekly
+            ? 'This week · ${weekRangeLabel(week)}'
+            : 'Allocated, spent, and remaining per category';
 
         return DecoratedBox(
           decoration: BoxDecoration(
@@ -65,7 +78,7 @@ class BudgetBalanceCard extends StatelessWidget {
             border: Border.all(color: colors.border),
           ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -88,7 +101,7 @@ class BudgetBalanceCard extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Allocated, spent, and remaining per category',
+                            subtitle,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -135,6 +148,36 @@ class BudgetBalanceCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 10),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: colors.surfaceHover,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: colors.border),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(2),
+                    child: Row(
+                      children: [
+                        for (final mode in _BalanceMode.values)
+                          Expanded(
+                            child: _ModeChip(
+                              label: mode == _BalanceMode.monthly
+                                  ? 'Monthly'
+                                  : 'Weekly',
+                              active: _mode == mode,
+                              colors: colors,
+                              onTap: () {
+                                if (_mode == mode) return;
+                                HapticFeedback.selectionClick();
+                                setState(() => _mode = mode);
+                              },
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
                 SizedBox(
                   height: 124,
                   child: ListView.separated(
@@ -143,12 +186,17 @@ class BudgetBalanceCard extends StatelessWidget {
                     separatorBuilder: (_, _) => const SizedBox(width: 10),
                     itemBuilder: (context, i) {
                       final row = rows[i];
+                      final budget = byId[row.id];
                       return _BudgetTile(
-                        key: ValueKey(row.id),
+                        key: ValueKey('${_mode.name}-${row.id}'),
                         category: row.category,
                         spent: row.spent,
                         limit: row.limit,
-                        color: _dotColors[i % _dotColors.length],
+                        color: categoryColorFromHex(
+                          budget?.color ??
+                              defaultColorForCategory(row.category, i),
+                        ),
+                        icon: categoryIconData(budget?.icon ?? 'more'),
                         colors: colors,
                       );
                     },
@@ -163,6 +211,48 @@ class BudgetBalanceCard extends StatelessWidget {
   }
 }
 
+class _ModeChip extends StatelessWidget {
+  const _ModeChip({
+    required this.label,
+    required this.active,
+    required this.colors,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final AppPalette colors;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: active ? colors.surface : Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: active ? Border.all(color: colors.border) : null,
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: active ? colors.textPrimary : colors.textMuted,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _BudgetTile extends StatelessWidget {
   const _BudgetTile({
     super.key,
@@ -170,6 +260,7 @@ class _BudgetTile extends StatelessWidget {
     required this.spent,
     required this.limit,
     required this.color,
+    required this.icon,
     required this.colors,
   });
 
@@ -177,6 +268,7 @@ class _BudgetTile extends StatelessWidget {
   final double spent;
   final double limit;
   final Color color;
+  final IconData icon;
   final AppPalette colors;
 
   @override
@@ -207,14 +299,7 @@ class _BudgetTile extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: color,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
+                      Icon(icon, size: 14, color: color),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(

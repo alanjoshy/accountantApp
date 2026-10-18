@@ -6,8 +6,13 @@ import 'package:flutter/services.dart';
 import '../../../../app/currency/currency_controller.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_spacing.dart';
+import '../../../../core/widgets/app_sheet.dart';
 import '../../../../core/widgets/app_toast.dart';
 import '../../../activity/domain/cycle.dart';
+import '../../../planned/data/planned_reserve.dart';
+import '../../../planned/data/planned_reserve_store.dart';
+import '../../../planned/domain/planned_logic.dart';
+import '../../../settings/data/app_settings.dart';
 import '../../../settings/data/app_settings_store.dart';
 import '../../../transactions/data/transaction_store.dart';
 import '../../data/budget.dart';
@@ -19,13 +24,8 @@ Future<void> showNextCyclePlanSheet(
   BuildContext context, {
   required List<Budget> currentCycleBudgets,
 }) {
-  return showModalBottomSheet<void>(
+  return showAppSheet<void>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: AppColors.of(context).surfaceElevated,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
     builder: (_) => NextCyclePlanSheet(
       currentCycleBudgets: currentCycleBudgets,
     ),
@@ -47,6 +47,8 @@ class _NextCyclePlanSheetState extends State<NextCyclePlanSheet> {
   late bool _carryForward;
   bool _saving = false;
   String? _error;
+  List<PlannedReserve> _pendingReserves = const [];
+  final Set<String> _acceptedReserveIds = {};
 
   @override
   void initState() {
@@ -68,16 +70,129 @@ class _NextCyclePlanSheetState extends State<NextCyclePlanSheet> {
               : draft.monthlyIncome.toString())
           : '',
     );
+
+    var limits = Map<String, double>.from(draft.limits);
+    final nextBounds = getNextCycleDayBounds(settings.cycleStartDay);
+    if (settings.plannedReservesEnabled) {
+      _pendingReserves = unappliedReservesForCycle(
+        PlannedReserveStore.instance.active,
+        cycleStart: nextBounds.start,
+        cycleEnd: nextBounds.end,
+      );
+      if (_pendingReserves.isNotEmpty &&
+          settings.plannedReserveAllocationMode ==
+              PlannedReserveAllocationMode.auto) {
+        limits = applyReserveTotalsToLimits(
+          limits: {
+            for (final b in widget.currentCycleBudgets)
+              b.id: limits[b.id] ?? b.limit,
+          },
+          budgets: widget.currentCycleBudgets,
+          reserves: _pendingReserves,
+        );
+        _acceptedReserveIds.addAll(_pendingReserves.map((r) => r.id));
+      }
+    }
+
     _drafts = {
       for (final b in widget.currentCycleBudgets)
         b.id: TextEditingController(
           text: () {
-            final n = draft.limits[b.id] ?? b.limit;
+            final n = limits[b.id] ?? b.limit;
             if (n <= 0) return '';
             return n == n.roundToDouble() ? n.round().toString() : n.toString();
           }(),
         ),
     };
+
+    if (settings.plannedReservesEnabled &&
+        settings.plannedReserveAllocationMode ==
+            PlannedReserveAllocationMode.ask &&
+        _pendingReserves.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _promptReserves();
+      });
+    }
+  }
+
+  void _applyReservesToDrafts(Iterable<PlannedReserve> reserves) {
+    final current = <String, double>{
+      for (final b in widget.currentCycleBudgets)
+        b.id: double.tryParse(_drafts[b.id]?.text.trim() ?? '') ?? 0,
+    };
+    final next = applyReserveTotalsToLimits(
+      limits: current,
+      budgets: widget.currentCycleBudgets,
+      reserves: reserves,
+    );
+    for (final b in widget.currentCycleBudgets) {
+      final n = next[b.id] ?? 0;
+      _drafts[b.id]?.text =
+          n <= 0 ? '' : (n == n.roundToDouble() ? n.round().toString() : '$n');
+    }
+    _acceptedReserveIds.addAll(reserves.map((r) => r.id));
+    setState(() {});
+  }
+
+  Future<void> _promptReserves() async {
+    final format = CurrencyController.instance.format;
+    final colors = AppColors.of(context);
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: colors.surfaceElevated,
+          title: Text(
+            'Include planned reserves?',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: colors.textPrimary,
+            ),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'These costs fall in the next cycle. Add them to category limits?',
+                  style: TextStyle(fontSize: 13, color: colors.textMuted),
+                ),
+                const SizedBox(height: 12),
+                for (final r in _pendingReserves) ...[
+                  Text(
+                    '${r.title} · ${r.category}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: colors.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    '${format(r.amount)} · ${r.dueDate}',
+                    style: TextStyle(fontSize: 12, color: colors.textMuted),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Not now'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(backgroundColor: colors.accent),
+              child: const Text('Add to budgets'),
+            ),
+          ],
+        );
+      },
+    );
+    if (accepted == true && mounted) {
+      _applyReservesToDrafts(_pendingReserves);
+    }
   }
 
   @override
@@ -144,6 +259,12 @@ class _NextCyclePlanSheetState extends State<NextCyclePlanSheet> {
           preparedAt: DateTime.now().toUtc().toIso8601String(),
         ),
       );
+      if (_acceptedReserveIds.isNotEmpty) {
+        await PlannedReserveStore.instance.markApplied(
+          _acceptedReserveIds,
+          next.start,
+        );
+      }
       if (!mounted) return;
       Navigator.pop(context);
       AppToast.success(
@@ -210,6 +331,54 @@ class _NextCyclePlanSheetState extends State<NextCyclePlanSheet> {
                 'Starts ${formatBoundsLabel(next)}',
                 style: TextStyle(fontSize: 12, color: colors.textMuted),
               ),
+              if (_pendingReserves.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: colors.surfaceHover,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: colors.border),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _acceptedReserveIds.length == _pendingReserves.length
+                              ? 'Planned reserves included'
+                              : '${_pendingReserves.length} planned reserve'
+                                  '${_pendingReserves.length == 1 ? '' : 's'} next cycle',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: colors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _pendingReserves
+                              .map((r) =>
+                                  '${r.title} (${format(r.amount)} · ${r.category})')
+                              .join(' · '),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colors.textMuted,
+                          ),
+                        ),
+                        if (_acceptedReserveIds.length !=
+                            _pendingReserves.length) ...[
+                          const SizedBox(height: 8),
+                          TextButton(
+                            onPressed: _promptReserves,
+                            child: const Text('Review & add'),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 14),
               Text(
                 'Next cycle income',

@@ -1,5 +1,7 @@
 // Money movement record (web Transaction subset).
 
+import '../../accounts/domain/payments.dart';
+
 enum TransactionType { income, expense, transfer }
 
 class MoneyTransaction {
@@ -13,6 +15,9 @@ class MoneyTransaction {
     required this.createdAt,
     this.note,
     this.tags = const [],
+    this.paymentMode,
+    this.accountId,
+    this.toAccountId,
   });
 
   final String id;
@@ -24,6 +29,9 @@ class MoneyTransaction {
   final String createdAt;
   final String? note;
   final List<String> tags;
+  final PaymentMode? paymentMode;
+  final String? accountId;
+  final String? toAccountId;
 
   MoneyTransaction copyWith({
     String? title,
@@ -33,7 +41,13 @@ class MoneyTransaction {
     String? date,
     String? note,
     List<String>? tags,
+    PaymentMode? paymentMode,
+    String? accountId,
+    String? toAccountId,
     bool clearNote = false,
+    bool clearPaymentMode = false,
+    bool clearAccountId = false,
+    bool clearToAccountId = false,
   }) {
     return MoneyTransaction(
       id: id,
@@ -45,6 +59,11 @@ class MoneyTransaction {
       createdAt: createdAt,
       note: clearNote ? null : (note ?? this.note),
       tags: tags ?? this.tags,
+      paymentMode:
+          clearPaymentMode ? null : (paymentMode ?? this.paymentMode),
+      accountId: clearAccountId ? null : (accountId ?? this.accountId),
+      toAccountId:
+          clearToAccountId ? null : (toAccountId ?? this.toAccountId),
     );
   }
 
@@ -58,6 +77,10 @@ class MoneyTransaction {
         'createdAt': createdAt,
         if (note != null && note!.isNotEmpty) 'note': note,
         if (tags.isNotEmpty) 'tags': tags,
+        if (paymentMode != null) 'paymentMode': paymentMode!.name,
+        if (accountId != null && accountId!.isNotEmpty) 'accountId': accountId,
+        if (toAccountId != null && toAccountId!.isNotEmpty)
+          'toAccountId': toAccountId,
       };
 
   factory MoneyTransaction.fromJson(Map<String, dynamic> json) {
@@ -67,6 +90,8 @@ class MoneyTransaction {
       orElse: () => TransactionType.expense,
     );
     final rawTags = json['tags'] as List<dynamic>? ?? const [];
+    final accountRaw = json['accountId'];
+    final toRaw = json['toAccountId'];
     return MoneyTransaction(
       id: json['id'] as String,
       title: json['title'] as String? ?? '',
@@ -77,6 +102,9 @@ class MoneyTransaction {
       createdAt: json['createdAt'] as String? ?? json['date'] as String,
       note: json['note'] as String?,
       tags: [for (final t in rawTags) t.toString()],
+      paymentMode: tryParsePaymentMode(json['paymentMode']),
+      accountId: accountRaw?.toString(),
+      toAccountId: toRaw?.toString(),
     );
   }
 }

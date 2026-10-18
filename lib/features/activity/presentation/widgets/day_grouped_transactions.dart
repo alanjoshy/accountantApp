@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 
 import '../../../../app/currency/currency_controller.dart';
 import '../../../../app/theme/app_colors.dart';
+import '../../../accounts/data/account_store.dart';
+import '../../../accounts/domain/payments.dart';
 import '../../../transactions/data/transaction.dart';
 import '../../../transactions/presentation/widgets/transaction_detail_sheet.dart';
 import '../../domain/activity_logic.dart';
@@ -208,8 +210,15 @@ class _TxRow extends StatelessWidget {
                     Text(
                       [
                         tx.category,
-                        if (tx.tags.isNotEmpty) tx.tags.join(', '),
-                      ].join(' · '),
+                        if (tx.paymentMode != null)
+                          paymentModeLabel(tx.paymentMode),
+                        if (tx.accountId != null)
+                          AccountStore.instance.byId(tx.accountId)?.name,
+                        if (tx.tags.isNotEmpty)
+                          tx.tags
+                              .map((t) => t.startsWith('#') ? t : '#$t')
+                              .join(' '),
+                      ].whereType<String>().where((s) => s.isNotEmpty).join(' · '),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(fontSize: 11, color: colors.textMuted),

@@ -142,6 +142,151 @@ double spentForBudget(
   });
 }
 
+/// Previous calendar month (not cash-flow cycle) — web previousCalendarMonth.
+({int year, int monthIndex, String label}) previousCalendarMonth([
+  DateTime? now,
+]) {
+  final n = now ?? DateTime.now();
+  final d = DateTime(n.year, n.month - 1, 1);
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return (
+    year: d.year,
+    monthIndex: d.month - 1,
+    label: '${months[d.month - 1]} ${d.year}',
+  );
+}
+
+bool isInCalendarMonth(String dateIso, int year, int monthIndex) {
+  if (RegExp(r'^\d{4}-\d{2}-\d{2}').hasMatch(dateIso)) {
+    final y = int.tryParse(dateIso.substring(0, 4));
+    final m = int.tryParse(dateIso.substring(5, 7));
+    return y == year && m == monthIndex + 1;
+  }
+  final d = DateTime.tryParse(dateIso)?.toLocal();
+  if (d == null) return false;
+  return d.year == year && d.month == monthIndex + 1;
+}
+
+double spentInCalendarMonth(
+  String category,
+  List<MoneyTransaction> transactions,
+  int year,
+  int monthIndex,
+) {
+  return transactions.fold<double>(0, (sum, t) {
+    if (t.type != TransactionType.expense || t.category != category) {
+      return sum;
+    }
+    return isInCalendarMonth(t.date, year, monthIndex) ? sum + t.amount : sum;
+  });
+}
+
+({String start, String end}) calendarMonthBounds(int year, int monthIndex) {
+  final start =
+      '$year-${(monthIndex + 1).toString().padLeft(2, '0')}-01';
+  final lastDay = DateTime(year, monthIndex + 2, 0).day;
+  final end =
+      '$year-${(monthIndex + 1).toString().padLeft(2, '0')}-${lastDay.toString().padLeft(2, '0')}';
+  return (start: start, end: end);
+}
+
+int overlapDaysInBounds(Budget budget, ({String start, String end}) bounds) {
+  if (!hasCustomBudgetRange(budget)) {
+    return inclusiveDayCount(bounds.start, bounds.end);
+  }
+  final a0 = budget.startDate!.trim();
+  final a1 = budget.endDate!.trim();
+  final start = a0.compareTo(bounds.start) > 0 ? a0 : bounds.start;
+  final end = a1.compareTo(bounds.end) < 0 ? a1 : bounds.end;
+  if (start.compareTo(end) > 0) return 0;
+  return inclusiveDayCount(start, end);
+}
+
+/// Category rows for a past calendar month (web budgetRowsForCalendarMonth).
+List<BudgetBalanceRow> budgetRowsForCalendarMonth(
+  List<Budget> budgets,
+  List<MoneyTransaction> transactions,
+  int year,
+  int monthIndex,
+) {
+  final bounds = calendarMonthBounds(year, monthIndex);
+  var source = listedBudgetsForWindow(
+    budgets,
+    bounds,
+    includeUndated: true,
+  ).where((b) => b.limit > 0).toList();
+
+  if (source.isEmpty) {
+    source = [for (final b in budgets) if (b.limit > 0) b];
+  }
+
+  final best = <String, Budget>{};
+  for (final b in source) {
+    final key = b.category.trim().toLowerCase();
+    if (key.isEmpty) continue;
+    final existing = best[key];
+    if (existing == null) {
+      best[key] = b;
+      continue;
+    }
+    final nextOverlap = overlapDaysInBounds(b, bounds);
+    final prevOverlap = overlapDaysInBounds(existing, bounds);
+    if (nextOverlap > prevOverlap ||
+        (nextOverlap == prevOverlap && b.limit > existing.limit)) {
+      best[key] = b;
+    }
+  }
+
+  return [
+    for (final b in best.values)
+      BudgetBalanceRow(
+        id: b.id,
+        category: b.category,
+        limit: b.limit,
+        spent: spentInCalendarMonth(b.category, transactions, year, monthIndex),
+      ),
+  ];
+}
+
+/// Daily spend vs total budget ÷ cycle days → 0–4 heat level.
+int dailySpendHeatLevel(
+  double dayExpense,
+  double totalBudget,
+  int cycleDays,
+) {
+  if (!(dayExpense > 0) || !(totalBudget > 0) || !(cycleDays > 0)) return 0;
+  final dailyAllowance = totalBudget / cycleDays;
+  if (!(dailyAllowance > 0)) return 0;
+  final ratio = dayExpense / dailyAllowance;
+  if (ratio <= 0) return 0;
+  if (ratio < 0.5) return 1;
+  if (ratio < 0.85) return 2;
+  if (ratio < 1) return 3;
+  return 4;
+}
+
+int amountHeatLevel(double amount, double max) {
+  if (max <= 0 || amount <= 0) return 1;
+  final ratio = amount / max;
+  if (ratio >= 0.75) return 4;
+  if (ratio >= 0.45) return 3;
+  if (ratio >= 0.2) return 2;
+  return 1;
+}
+
 double totalAllocated(Iterable<Budget> budgets) {
   return budgets.fold<double>(
     0,

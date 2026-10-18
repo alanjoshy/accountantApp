@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../../../app/currency/currency_controller.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_spacing.dart';
+import '../../../../core/widgets/app_sheet.dart';
 import '../../../../core/widgets/app_toast.dart';
 import '../../data/jar_goal.dart';
 import '../../data/jar_store.dart';
@@ -22,73 +23,33 @@ class JarScreen extends StatefulWidget {
 class _JarScreenState extends State<JarScreen> {
   Future<void> _openCreate() async {
     HapticFeedback.lightImpact();
-    await showModalBottomSheet<void>(
+    await showAppSheet<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.of(context).surfaceElevated,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (ctx) => const _JarEditorSheet(mode: _JarEditorMode.create),
     );
   }
 
   Future<void> _openEdit(JarGoal jar) async {
     HapticFeedback.lightImpact();
-    await showModalBottomSheet<void>(
+    await showAppSheet<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.of(context).surfaceElevated,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (ctx) => _JarEditorSheet(mode: _JarEditorMode.edit, jar: jar),
     );
   }
 
   Future<void> _openAdd(JarGoal jar) async {
     HapticFeedback.lightImpact();
-    await showModalBottomSheet<void>(
+    await showAppSheet<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.of(context).surfaceElevated,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (ctx) => _AddMoneySheet(jar: jar),
     );
   }
 
   Future<void> _confirmDelete(JarGoal jar) async {
-    final colors = AppColors.of(context);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          backgroundColor: colors.surfaceElevated,
-          title: Text(
-            'Delete jar?',
-            style: TextStyle(
-              color: colors.textPrimary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          content: Text(
-            '“${jar.name}” and its saved progress will be removed.',
-            style: TextStyle(color: colors.textSecondary),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Cancel', style: TextStyle(color: colors.textMuted)),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text('Delete', style: TextStyle(color: colors.error)),
-            ),
-          ],
-        );
-      },
+    final ok = await AppToast.confirm(
+      context,
+      title: 'Delete jar?',
+      message: '“${jar.name}” and its saved progress will be removed.',
     );
     if (ok != true || !mounted) return;
     try {

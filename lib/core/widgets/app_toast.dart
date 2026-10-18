@@ -1,4 +1,4 @@
-// App-wide toast (web Toast / NoticeCard parity).
+// App-wide toast + confirm (web Toast / NoticeCard parity).
 
 import 'dart:async';
 
@@ -16,6 +16,7 @@ class AppToast {
   static final GlobalKey<_ToastHostState> _hostKey =
       GlobalKey<_ToastHostState>();
   static Timer? _timer;
+  static Completer<bool>? _confirmCompleter;
 
   static const _titles = <AppToastTone, String>{
     AppToastTone.success: 'Saved',
@@ -36,17 +37,8 @@ class AppToast {
     final overlay = Overlay.maybeOf(context, rootOverlay: true);
     if (overlay == null) return;
 
-    switch (tone) {
-      case AppToastTone.error:
-        HapticFeedback.heavyImpact();
-      case AppToastTone.warning:
-        HapticFeedback.mediumImpact();
-      case AppToastTone.success:
-        HapticFeedback.lightImpact();
-      case AppToastTone.info:
-        HapticFeedback.selectionClick();
-    }
-
+    _haptic(tone);
+    _resolveConfirm(false);
     _removeNow();
 
     final heading = (title?.trim().isNotEmpty ?? false)
@@ -61,15 +53,14 @@ class AppToast {
           top: top,
           left: 16,
           right: 16,
-          child: IgnorePointer(
-            ignoring: false,
-            child: _ToastHost(
-              key: _hostKey,
-              tone: tone,
-              title: heading,
-              message: body.isEmpty || body == heading ? null : body,
-              onClose: dismiss,
-            ),
+          child: _ToastHost(
+            key: _hostKey,
+            tone: tone,
+            title: heading,
+            message: body.isEmpty || body == heading ? null : body,
+            onClose: dismiss,
+            confirmLabel: 'OK',
+            onConfirm: dismiss,
           ),
         );
       },
@@ -83,6 +74,77 @@ class AppToast {
     if (duration > Duration.zero) {
       _timer = Timer(duration, dismiss);
     }
+  }
+
+  /// Toast-style confirm (no AlertDialog). True = confirmed.
+  static Future<bool> confirm(
+    BuildContext context, {
+    required String title,
+    String? message,
+    String confirmLabel = 'Delete',
+    String cancelLabel = 'Cancel',
+    AppToastTone tone = AppToastTone.error,
+  }) {
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return Future.value(false);
+
+    _haptic(tone);
+    _resolveConfirm(false);
+    _removeNow();
+
+    final completer = Completer<bool>();
+    _confirmCompleter = completer;
+
+    void finish(bool value) {
+      if (completer.isCompleted) return;
+      completer.complete(value);
+      if (identical(_confirmCompleter, completer)) {
+        _confirmCompleter = null;
+      }
+      dismiss();
+    }
+
+    _entry = OverlayEntry(
+      builder: (ctx) {
+        final top = MediaQuery.paddingOf(ctx).top + 12;
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => finish(false),
+                child: ColoredBox(
+                  color: Colors.black.withValues(alpha: 0.55),
+                ),
+              ),
+            ),
+            Positioned(
+              top: top,
+              left: 16,
+              right: 16,
+              child: _ToastHost(
+                key: _hostKey,
+                tone: tone,
+                title: title,
+                message: message,
+                onClose: () => finish(false),
+                cancelLabel: cancelLabel,
+                confirmLabel: confirmLabel,
+                onCancel: () => finish(false),
+                onConfirm: () => finish(true),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    overlay.insert(_entry!);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _hostKey.currentState?.playIn();
+    });
+
+    return completer.future;
   }
 
   static void success(BuildContext context, String message) =>
@@ -104,14 +166,40 @@ class AppToast {
       return;
     }
 
-    host.playOut().whenComplete(_removeNow);
+    // Always clear entry even if playOut throws / never completes.
+    host.playOut().whenComplete(_removeNow).catchError((_) {
+      _removeNow();
+    });
+  }
+
+  static void _haptic(AppToastTone tone) {
+    switch (tone) {
+      case AppToastTone.error:
+        HapticFeedback.heavyImpact();
+      case AppToastTone.warning:
+        HapticFeedback.mediumImpact();
+      case AppToastTone.success:
+        HapticFeedback.lightImpact();
+      case AppToastTone.info:
+        HapticFeedback.selectionClick();
+    }
+  }
+
+  static void _resolveConfirm(bool value) {
+    final c = _confirmCompleter;
+    if (c == null || c.isCompleted) return;
+    c.complete(value);
+    _confirmCompleter = null;
   }
 
   static void _removeNow() {
     _timer?.cancel();
     _timer = null;
-    _entry?.remove();
+    // Never leave a hung confirm future if the overlay is torn down.
+    _resolveConfirm(false);
+    final entry = _entry;
     _entry = null;
+    entry?.remove();
   }
 }
 
@@ -122,12 +210,20 @@ class _ToastHost extends StatefulWidget {
     required this.title,
     required this.message,
     required this.onClose,
+    this.cancelLabel,
+    this.confirmLabel,
+    this.onCancel,
+    this.onConfirm,
   });
 
   final AppToastTone tone;
   final String title;
   final String? message;
   final VoidCallback onClose;
+  final String? cancelLabel;
+  final String? confirmLabel;
+  final VoidCallback? onCancel;
+  final VoidCallback? onConfirm;
 
   @override
   State<_ToastHost> createState() => _ToastHostState();
@@ -199,6 +295,10 @@ class _ToastHostState extends State<_ToastHost>
             title: widget.title,
             message: widget.message,
             onClose: widget.onClose,
+            cancelLabel: widget.cancelLabel,
+            confirmLabel: widget.confirmLabel,
+            onCancel: widget.onCancel,
+            onConfirm: widget.onConfirm,
           ),
         ),
       ),
@@ -212,12 +312,20 @@ class _ToastBanner extends StatelessWidget {
     required this.title,
     required this.message,
     required this.onClose,
+    this.cancelLabel,
+    this.confirmLabel,
+    this.onCancel,
+    this.onConfirm,
   });
 
   final AppToastTone tone;
   final String title;
   final String? message;
   final VoidCallback onClose;
+  final String? cancelLabel;
+  final String? confirmLabel;
+  final VoidCallback? onCancel;
+  final VoidCallback? onConfirm;
 
   @override
   Widget build(BuildContext context) {
@@ -228,6 +336,7 @@ class _ToastBanner extends StatelessWidget {
       AppToastTone.info => Icons.help_rounded,
       AppToastTone.warning || AppToastTone.error => Icons.warning_rounded,
     };
+    final hasActions = onConfirm != null || onCancel != null;
 
     return Material(
       color: Colors.transparent,
@@ -251,92 +360,130 @@ class _ToastBanner extends StatelessWidget {
             ),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(icon, size: 18, color: accent),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            height: 1.25,
-                            color: colors.textPrimary,
-                          ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: accent.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
                         ),
-                        if (message != null) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            message!,
-                            maxLines: 4,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              height: 1.3,
-                              color: colors.textSecondary,
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 10),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: TextButton(
-                            onPressed: onClose,
-                            style: TextButton.styleFrom(
-                              backgroundColor: accent,
-                              foregroundColor: Colors.white,
-                              minimumSize: const Size(0, 32),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 6,
-                              ),
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                            child: const Text(
-                              'OK',
+                        child: Icon(icon, size: 18, color: accent),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                height: 1.25,
+                                color: colors.textPrimary,
+                              ),
+                            ),
+                            if (message != null) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                message!,
+                                maxLines: 4,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  height: 1.3,
+                                  color: colors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: onClose,
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        icon: Icon(
+                          Icons.close_rounded,
+                          size: 18,
+                          color: colors.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (hasActions) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        if (onCancel != null) ...[
+                          Expanded(
+                            child: TextButton(
+                              onPressed: onCancel,
+                              style: TextButton.styleFrom(
+                                backgroundColor: colors.surfaceHover,
+                                foregroundColor: colors.textPrimary,
+                                minimumSize: const Size(0, 36),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              child: Text(
+                                cancelLabel ?? 'Cancel',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
                           ),
-                        ),
+                          const SizedBox(width: 8),
+                        ],
+                        if (onConfirm != null)
+                          Expanded(
+                            child: TextButton(
+                              onPressed: onConfirm,
+                              style: TextButton.styleFrom(
+                                backgroundColor: accent,
+                                foregroundColor: Colors.white,
+                                minimumSize: const Size(0, 36),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              child: Text(
+                                confirmLabel ?? 'OK',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
                       ],
                     ),
-                  ),
-                  IconButton(
-                    onPressed: onClose,
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 32,
-                    ),
-                    icon: Icon(
-                      Icons.close_rounded,
-                      size: 18,
-                      color: colors.textMuted,
-                    ),
-                  ),
+                  ],
                 ],
               ),
             ),

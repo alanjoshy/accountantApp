@@ -6,11 +6,22 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/storage/local_storage.dart';
-import '../../activity/domain/cycle.dart';
 import '../../settings/data/app_settings_store.dart';
 import '../domain/budget_cycle.dart';
-import '../domain/budget_logic.dart';
 import 'budget.dart';
+import 'category_style.dart';
+
+/// Default category shells (web DEFAULT_BUDGET_CATEGORIES) — limits start at 0.
+const defaultBudgetCategories = <String>[
+  'Food',
+  'Grocery',
+  'Transport',
+  'Bills',
+  'Shopping',
+  'Entertainment',
+  'Health',
+  'Other',
+];
 
 class BudgetStore extends ChangeNotifier {
   BudgetStore();
@@ -38,6 +49,32 @@ class BudgetStore extends ChangeNotifier {
     }
   }
 
+  /// Seed empty category rows once so income can be allocated (web parity).
+  Future<void> ensureDefaultCategories() async {
+    final seeded =
+        LocalStorage.getString(AppConstants.budgetsSeededKey) == '1';
+    if (seeded) return;
+    if (_items.isNotEmpty) {
+      await LocalStorage.setString(AppConstants.budgetsSeededKey, '1');
+      return;
+    }
+    final now = DateTime.now().toUtc().toIso8601String();
+    _items = [
+      for (var i = 0; i < defaultBudgetCategories.length; i++)
+        Budget(
+          id: _newId(),
+          category: defaultBudgetCategories[i],
+          limit: 0,
+          icon: defaultIconForCategory(defaultBudgetCategories[i]),
+          color: defaultColorForCategory(defaultBudgetCategories[i], i),
+          createdAt: now,
+        ),
+    ];
+    notifyListeners();
+    await _persist();
+    await LocalStorage.setString(AppConstants.budgetsSeededKey, '1');
+  }
+
   Future<void> _persist() async {
     await LocalStorage.setString(
       AppConstants.budgetsKey,
@@ -45,7 +82,12 @@ class BudgetStore extends ChangeNotifier {
     );
   }
 
-  String _newId() => DateTime.now().microsecondsSinceEpoch.toString();
+  int _idSeq = 0;
+
+  String _newId() {
+    _idSeq += 1;
+    return '${DateTime.now().microsecondsSinceEpoch}-$_idSeq';
+  }
 
   Future<void> replaceAll(List<Budget> items) async {
     _items = items;
@@ -53,15 +95,58 @@ class BudgetStore extends ChangeNotifier {
     await _persist();
   }
 
-  /// Stamp undated rows, activate next draft if due, then rollover.
+  /// One-time: drop cycle/custom dates so categories stay until deleted.
+  Future<void> migrateToPermanentCategories() async {
+    if (LocalStorage.getString(AppConstants.budgetsPermanentKey) == '1') {
+      // Still backfill icon/color for older rows.
+      await _backfillStyles();
+      return;
+    }
+    if (_items.any((b) => b.hasCustomRange)) {
+      _items = [
+        for (final b in _items) b.copyWith(clearDates: true),
+      ];
+      notifyListeners();
+      await _persist();
+    }
+    await LocalStorage.setString(AppConstants.budgetsPermanentKey, '1');
+    await _backfillStyles();
+  }
+
+  Future<void> _backfillStyles() async {
+    var changed = false;
+    final next = <Budget>[];
+    for (var i = 0; i < _items.length; i++) {
+      final b = _items[i];
+      final needsIcon = b.icon.isEmpty || b.icon == 'more';
+      final needsColor = b.color.isEmpty || b.color == '#3b82f6';
+      if (!needsIcon && !needsColor) {
+        next.add(b);
+        continue;
+      }
+      changed = true;
+      next.add(
+        b.copyWith(
+          icon: needsIcon ? defaultIconForCategory(b.category) : b.icon,
+          color: needsColor
+              ? defaultColorForCategory(b.category, i)
+              : b.color,
+        ),
+      );
+    }
+    if (!changed) return;
+    _items = next;
+    notifyListeners();
+    await _persist();
+  }
+
+  /// Activate next draft if due, then rollover dated rows.
+  /// Permanent (undated) categories are left alone until deleted.
   Future<void> syncCycles() async {
+    await migrateToPermanentCategories();
     final settingsStore = AppSettingsStore.instance;
     var settings = settingsStore.settings;
     var budgets = _items;
-
-    if (budgets.any((b) => !hasCustomBudgetRange(b))) {
-      budgets = stampUndatedBudgets(budgets, settings.cycleStartDay);
-    }
 
     final activated = activateNextCycleIfDue(
       settings: settings,
@@ -93,22 +178,20 @@ class BudgetStore extends ChangeNotifier {
     required double limit,
     String? startDate,
     String? endDate,
+    String? icon,
+    String? color,
   }) async {
-    var start = startDate?.trim();
-    var end = endDate?.trim();
-    if (start == null || start.isEmpty || end == null || end.isEmpty) {
-      final cycle = getCurrentCycleDayBounds(
-        AppSettingsStore.instance.cycleStartDay,
-      );
-      start = cycle.start;
-      end = cycle.end;
-    }
+    final start = startDate?.trim();
+    final end = endDate?.trim();
+    final name = category.trim();
     final budget = Budget(
       id: _newId(),
-      category: category.trim(),
+      category: name,
       limit: limit < 0 ? 0 : limit,
-      startDate: start,
-      endDate: end,
+      startDate: start == null || start.isEmpty ? null : start,
+      endDate: end == null || end.isEmpty ? null : end,
+      icon: icon ?? defaultIconForCategory(name),
+      color: color ?? defaultColorForCategory(name, _items.length),
       createdAt: DateTime.now().toUtc().toIso8601String(),
     );
     _items = [..._items, budget];

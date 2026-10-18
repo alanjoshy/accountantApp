@@ -5,6 +5,9 @@ import 'package:flutter/services.dart';
 
 import '../../../../app/currency/currency_controller.dart';
 import '../../../../app/theme/app_colors.dart';
+import '../../../auth/data/app_lock_store.dart';
+import '../../../auth/domain/sensitive_access_session.dart';
+import '../../../auth/presentation/widgets/unlock_sheet.dart';
 import 'balance_battery.dart';
 import 'streak_fire_badge.dart';
 
@@ -16,6 +19,7 @@ class BalanceCard extends StatefulWidget {
     this.expense = 0,
     this.paymentStreak = 0,
     this.batteryCapacity,
+    this.cycleRangeLabel,
   });
 
   final double balance;
@@ -24,33 +28,51 @@ class BalanceCard extends StatefulWidget {
   final int paymentStreak;
   final double? batteryCapacity;
 
+  /// Current cash-flow cycle range, e.g. "Sep 25 – Oct 24, 2026".
+  final String? cycleRangeLabel;
+
   @override
   State<BalanceCard> createState() => _BalanceCardState();
 }
 
 class _BalanceCardState extends State<BalanceCard> {
-  /// Local UI flag — [ValueNotifier] so currency listeners don’t need setState.
-  final ValueNotifier<bool> _visible = ValueNotifier(false);
-
-  static const _placeholderCapacity = 10000.0;
+  /// Local hide toggle when balance protection is off.
+  final ValueNotifier<bool> _localVisible = ValueNotifier(true);
 
   double get _capacity {
     if (widget.batteryCapacity != null && widget.batteryCapacity! > 0) {
       return widget.batteryCapacity!;
     }
     if (widget.income > 0) return widget.income;
-    return _placeholderCapacity;
+    return 0;
   }
 
   late final Listenable _amountListenable = Listenable.merge([
     CurrencyController.instance,
-    _visible,
+    _localVisible,
+    AppLockStore.instance,
+    SensitiveAccessSession.instance,
   ]);
 
   @override
   void dispose() {
-    _visible.dispose();
+    _localVisible.dispose();
     super.dispose();
+  }
+
+  Future<void> _onVisibilityTap(bool currentlyVisible) async {
+    HapticFeedback.selectionClick();
+    final protect = AppLockStore.instance.protectAccountBalances &&
+        AppLockStore.instance.hasPin;
+    if (protect) {
+      if (currentlyVisible) {
+        SensitiveAccessSession.instance.lock();
+      } else {
+        await ensureSensitiveAccess(context);
+      }
+      return;
+    }
+    _localVisible.value = !currentlyVisible;
   }
 
   @override
@@ -90,37 +112,67 @@ class _BalanceCardState extends State<BalanceCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: Wrap(
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: 8,
-                        runSpacing: 4,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Account balance',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: colors.textSecondary,
-                            ),
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            runSpacing: 4,
+                            children: [
+                              Text(
+                                'Account balance',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: colors.textSecondary,
+                                ),
+                              ),
+                              StreakFireBadge(streak: widget.paymentStreak),
+                            ],
                           ),
-                          StreakFireBadge(streak: widget.paymentStreak),
+                          if (widget.cycleRangeLabel != null &&
+                              widget.cycleRangeLabel!.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Cash flow cycle',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colors.textMuted,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              widget.cycleRangeLabel!,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: -0.2,
+                                color: colors.accent,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
-                    ValueListenableBuilder<bool>(
-                      valueListenable: _visible,
-                      builder: (context, visible, _) {
+                    ListenableBuilder(
+                      listenable: _amountListenable,
+                      builder: (context, _) {
+                        final protect =
+                            AppLockStore.instance.protectAccountBalances &&
+                                AppLockStore.instance.hasPin;
+                        final visible = protect
+                            ? SensitiveAccessSession.instance.isRevealed
+                            : _localVisible.value;
                         return _IconBtn(
                           icon: visible
                               ? Icons.visibility_off_rounded
                               : Icons.visibility_rounded,
                           colors: colors,
-                          onTap: () {
-                            HapticFeedback.selectionClick();
-                            _visible.value = !visible;
-                          },
+                          onTap: () => _onVisibilityTap(visible),
                         );
                       },
                     ),
@@ -130,7 +182,12 @@ class _BalanceCardState extends State<BalanceCard> {
                 ListenableBuilder(
                   listenable: _amountListenable,
                   builder: (context, _) {
-                    final visible = _visible.value;
+                    final protect =
+                        AppLockStore.instance.protectAccountBalances &&
+                            AppLockStore.instance.hasPin;
+                    final visible = protect
+                        ? SensitiveAccessSession.instance.isRevealed
+                        : _localVisible.value;
                     final format = CurrencyController.instance.format;
                     String amount(double v) =>
                         visible ? format(v) : '•••••';
@@ -143,16 +200,20 @@ class _BalanceCardState extends State<BalanceCard> {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Expanded(
-                              child: Text(
-                                amount(widget.balance),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.6,
-                                  height: 1,
-                                  color: colors.textPrimary,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  amount(widget.balance),
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  style: TextStyle(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: -0.6,
+                                    height: 1,
+                                    color: colors.textPrimary,
+                                  ),
                                 ),
                               ),
                             ),

@@ -1,5 +1,6 @@
 // SharedPreferences wrapper.
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LocalStorage {
@@ -9,6 +10,13 @@ class LocalStorage {
 
   static Future<void> init() async {
     _prefs ??= await SharedPreferences.getInstance();
+  }
+
+  /// Drop the cached handle so the next [init] picks up a fresh instance
+  /// (needed after [SharedPreferences.setMockInitialValues] in tests).
+  @visibleForTesting
+  static void resetForTest() {
+    _prefs = null;
   }
 
   static SharedPreferences get _p {

@@ -1,4 +1,4 @@
-// Budget category limit (web Budget subset).
+// Budget category limit (web Budget subset + icon/color).
 
 class Budget {
   const Budget({
@@ -8,8 +8,13 @@ class Budget {
     this.period = 'monthly',
     this.startDate,
     this.endDate,
+    // ignore: prefer_initializing_formals — keep public `icon`/`color` names
+    String? icon = 'more',
+    // ignore: prefer_initializing_formals
+    String? color = '#3b82f6',
     required this.createdAt,
-  });
+  })  : _icon = icon,
+        _color = color;
 
   final String id;
   final String category;
@@ -18,7 +23,20 @@ class Budget {
   /// Inclusive YYYY-MM-DD when using a custom date window.
   final String? startDate;
   final String? endDate;
+  final String? _icon;
+  final String? _color;
   final String createdAt;
+
+  /// Hot-reload / legacy rows may leave style fields null.
+  String get icon {
+    final v = _icon;
+    return (v == null || v.isEmpty) ? 'more' : v;
+  }
+
+  String get color {
+    final v = _color;
+    return (v == null || v.isEmpty) ? '#3b82f6' : v;
+  }
 
   bool get hasCustomRange =>
       startDate != null &&
@@ -32,6 +50,8 @@ class Budget {
     String? period,
     String? startDate,
     String? endDate,
+    String? icon,
+    String? color,
     bool clearDates = false,
   }) {
     return Budget(
@@ -41,6 +61,8 @@ class Budget {
       period: period ?? this.period,
       startDate: clearDates ? null : (startDate ?? this.startDate),
       endDate: clearDates ? null : (endDate ?? this.endDate),
+      icon: icon ?? this.icon,
+      color: color ?? this.color,
       createdAt: createdAt,
     );
   }
@@ -51,6 +73,8 @@ class Budget {
         'limit': limit,
         'period': period,
         'createdAt': createdAt,
+        'icon': icon,
+        'color': color,
         if (startDate != null && startDate!.isNotEmpty) 'startDate': startDate,
         if (endDate != null && endDate!.isNotEmpty) 'endDate': endDate,
       };
@@ -63,6 +87,8 @@ class Budget {
       period: json['period'] as String? ?? 'monthly',
       startDate: json['startDate'] as String?,
       endDate: json['endDate'] as String?,
+      icon: json['icon'] as String? ?? 'more',
+      color: json['color'] as String? ?? '#3b82f6',
       createdAt: json['createdAt'] as String? ?? '',
     );
   }

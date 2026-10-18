@@ -115,4 +115,10 @@ class JarStore extends ChangeNotifier {
     notifyListeners();
     await _persist();
   }
+
+  Future<void> replaceAll(List<JarGoal> jars) async {
+    _jars = [...jars]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    notifyListeners();
+    await _persist();
+  }
 }

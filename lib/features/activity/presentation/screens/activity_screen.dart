@@ -7,6 +7,9 @@ import '../../../../app/currency/currency_controller.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_spacing.dart';
 import '../../../../core/widgets/app_toast.dart';
+import '../../../accounts/data/account.dart';
+import '../../../accounts/data/account_store.dart';
+import '../../../accounts/domain/payments.dart';
 import '../../../budgets/data/budget_store.dart';
 import '../../../budgets/domain/budget_logic.dart';
 import '../../../settings/data/app_settings_store.dart';
@@ -34,6 +37,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
   String _search = '';
   String? _categoryFilter;
   String? _tagFilter;
+  String? _accountFilter;
+  String? _paymentModeFilter;
   bool _filtersOpen = false;
   bool _selectionMode = false;
   final _selectedIds = <String>{};
@@ -52,6 +57,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
       (_period != ActivityPeriodFilter.all ? 1 : 0) +
       (_categoryFilter != null ? 1 : 0) +
       (_tagFilter != null ? 1 : 0) +
+      (_accountFilter != null ? 1 : 0) +
+      (_paymentModeFilter != null ? 1 : 0) +
       (_search.trim().isNotEmpty ? 1 : 0);
 
   void _clearFilters() {
@@ -63,6 +70,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _searchController.clear();
       _categoryFilter = null;
       _tagFilter = null;
+      _accountFilter = null;
+      _paymentModeFilter = null;
     });
   }
 
@@ -86,31 +95,12 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
   Future<void> _deleteSelected() async {
     if (_selectedIds.isEmpty) return;
-    final colors = AppColors.of(context);
     final n = _selectedIds.length;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: colors.surfaceElevated,
-        title: Text(
-          'Delete $n transaction${n == 1 ? '' : 's'}?',
-          style: TextStyle(color: colors.textPrimary),
-        ),
-        content: Text(
-          'This removes them from Activity. It cannot be undone.',
-          style: TextStyle(color: colors.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: TextStyle(color: colors.textMuted)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Delete', style: TextStyle(color: colors.error)),
-          ),
-        ],
-      ),
+    final ok = await AppToast.confirm(
+      context,
+      title: 'Delete $n transaction${n == 1 ? '' : 's'}?',
+      message:
+          'This removes them from Activity and reverses linked account balances. It cannot be undone.',
     );
     if (ok != true || !mounted) return;
     setState(() => _deleting = true);
@@ -138,12 +128,14 @@ class _ActivityScreenState extends State<ActivityScreen> {
     return ListenableBuilder(
       listenable: Listenable.merge([
         TransactionStore.instance,
+        AccountStore.instance,
         AppSettingsStore.instance,
         BudgetStore.instance,
         CurrencyController.instance,
       ]),
       builder: (context, _) {
         final all = TransactionStore.instance.transactions;
+        final cycleDay = AppSettingsStore.instance.cycleStartDay;
         final filtered = filterActivityTransactions(
           all,
           type: _type,
@@ -151,19 +143,25 @@ class _ActivityScreenState extends State<ActivityScreen> {
           search: _search,
           category: _categoryFilter,
           tag: _tagFilter,
+          accountId: _accountFilter,
+          paymentMode: _paymentModeFilter,
+          cycleStartDay: cycleDay,
         );
         final totals = sumByType(filtered);
         final categoryRows = buildCategoryBreakdown(filtered);
         final expenseRows = buildExpenseCategoryBreakdown(filtered);
         final tagRows = buildTagBreakdown(filtered);
-        final dailySpend = buildDailySpending(filtered, _period);
+        final dailySpend = buildDailySpending(
+          filtered,
+          _period,
+          cycleStartDay: cycleDay,
+        );
         final categories = {
           for (final t in all)
             if (t.type != TransactionType.transfer) t.category,
         }.toList()
           ..sort();
         final availableTags = AppSettingsStore.instance.tags;
-        final cycleDay = AppSettingsStore.instance.cycleStartDay;
         final cycleBounds = getCurrentCycleDayBounds(cycleDay);
         final cycleBudgets = listedBudgetsForWindow(
           BudgetStore.instance.budgets,
@@ -335,14 +333,20 @@ class _ActivityScreenState extends State<ActivityScreen> {
                         period: _period,
                         categoryFilter: _categoryFilter,
                         tagFilter: _tagFilter,
+                        accountFilter: _accountFilter,
+                        paymentModeFilter: _paymentModeFilter,
                         categories: categories,
                         tags: availableTags,
+                        accounts: AccountStore.instance.accounts,
                         activeCount: _activeFilterCount,
                         onClear: _clearFilters,
                         onType: (v) => setState(() => _type = v),
                         onPeriod: (v) => setState(() => _period = v),
                         onCategory: (v) => setState(() => _categoryFilter = v),
                         onTag: (v) => setState(() => _tagFilter = v),
+                        onAccount: (v) => setState(() => _accountFilter = v),
+                        onPaymentMode: (v) =>
+                            setState(() => _paymentModeFilter = v),
                       ),
                     ],
                     if (_tab == _ActivityTab.categories) ...[
@@ -591,14 +595,19 @@ class _FiltersPanel extends StatelessWidget {
     required this.period,
     required this.categoryFilter,
     required this.tagFilter,
+    required this.accountFilter,
+    required this.paymentModeFilter,
     required this.categories,
     required this.tags,
+    required this.accounts,
     required this.activeCount,
     required this.onClear,
     required this.onType,
     required this.onPeriod,
     required this.onCategory,
     required this.onTag,
+    required this.onAccount,
+    required this.onPaymentMode,
   });
 
   final AppPalette colors;
@@ -606,14 +615,19 @@ class _FiltersPanel extends StatelessWidget {
   final ActivityPeriodFilter period;
   final String? categoryFilter;
   final String? tagFilter;
+  final String? accountFilter;
+  final String? paymentModeFilter;
   final List<String> categories;
   final List<String> tags;
+  final List<MoneyAccount> accounts;
   final int activeCount;
   final VoidCallback onClear;
   final ValueChanged<ActivityTypeFilter> onType;
   final ValueChanged<ActivityPeriodFilter> onPeriod;
   final ValueChanged<String?> onCategory;
   final ValueChanged<String?> onTag;
+  final ValueChanged<String?> onAccount;
+  final ValueChanged<String?> onPaymentMode;
 
   @override
   Widget build(BuildContext context) {
@@ -678,7 +692,7 @@ class _FiltersPanel extends StatelessWidget {
                 for (final (f, label) in [
                   (ActivityPeriodFilter.d7, '7 days'),
                   (ActivityPeriodFilter.d30, '30 days'),
-                  (ActivityPeriodFilter.month, 'Month'),
+                  (ActivityPeriodFilter.month, 'Cycle'),
                   (ActivityPeriodFilter.all, 'All time'),
                 ])
                   ChoiceChip(
@@ -735,7 +749,7 @@ class _FiltersPanel extends StatelessWidget {
                   ),
                   for (final t in tags)
                     ChoiceChip(
-                      label: Text(t),
+                      label: Text(t.startsWith('#') ? t : '#$t'),
                       selected: tagFilter == t,
                       onSelected: (_) =>
                           onTag(tagFilter == t ? null : t),
@@ -743,6 +757,54 @@ class _FiltersPanel extends StatelessWidget {
                 ],
               ),
             ],
+            if (accounts.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text('Account',
+                  style: TextStyle(fontSize: 11, color: colors.textMuted)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  ChoiceChip(
+                    label: const Text('All'),
+                    selected: accountFilter == null,
+                    onSelected: (_) => onAccount(null),
+                  ),
+                  for (final a in accounts)
+                    ChoiceChip(
+                      label: Text(a.name),
+                      selected: accountFilter == a.id,
+                      onSelected: (_) => onAccount(
+                        accountFilter == a.id ? null : a.id,
+                      ),
+                    ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 10),
+            Text('Payment mode',
+                style: TextStyle(fontSize: 11, color: colors.textMuted)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                ChoiceChip(
+                  label: const Text('All'),
+                  selected: paymentModeFilter == null,
+                  onSelected: (_) => onPaymentMode(null),
+                ),
+                for (final m in paymentModes)
+                  ChoiceChip(
+                    label: Text(m.label),
+                    selected: paymentModeFilter == m.id.name,
+                    onSelected: (_) => onPaymentMode(
+                      paymentModeFilter == m.id.name ? null : m.id.name,
+                    ),
+                  ),
+              ],
+            ),
           ],
         ),
       ),

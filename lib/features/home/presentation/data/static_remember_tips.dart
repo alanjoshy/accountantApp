@@ -1,5 +1,7 @@
 // Static demo tips for Home “Things to remember”.
 
+import 'package:flutter/foundation.dart';
+
 enum RememberTone { info, warning, success }
 
 class StaticRememberTip {
@@ -9,6 +11,7 @@ class StaticRememberTip {
     required this.body,
     required this.tone,
     this.hrefLabel,
+    this.onOpen,
   });
 
   final String id;
@@ -16,6 +19,7 @@ class StaticRememberTip {
   final String body;
   final RememberTone tone;
   final String? hrefLabel;
+  final VoidCallback? onOpen;
 }
 
 const staticRememberTips = <StaticRememberTip>[

@@ -11,7 +11,12 @@ import 'package:accountant/app/currency/currency_controller.dart';
 import 'package:accountant/app/theme/app_theme.dart';
 import 'package:accountant/app/theme/theme_controller.dart';
 import 'package:accountant/core/navigation/app_tab.dart';
+import 'package:accountant/core/storage/local_storage.dart';
 import 'package:accountant/core/widgets/app_toast.dart';
+import 'package:accountant/features/auth/data/app_lock_store.dart';
+import 'package:accountant/features/auth/domain/app_session.dart';
+import 'package:accountant/features/auth/domain/biometric_auth.dart';
+import 'package:accountant/features/auth/domain/sensitive_access_session.dart';
 import 'package:accountant/features/auth/presentation/screens/lock_screen.dart';
 import 'package:accountant/features/budgets/data/budget_store.dart';
 import 'package:accountant/features/settings/data/app_settings_store.dart';
@@ -24,18 +29,37 @@ void main() {
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    LocalStorage.resetForTest();
     await bootstrap();
+    AppSession.instance.reset();
+    SensitiveAccessSession.instance.reset();
+    BiometricAuth.instance.debugClearOverride();
     await ThemeController.instance.setMode(ThemeMode.system);
     AppToast.dismiss();
   });
 
   tearDown(AppToast.dismiss);
 
-  testWidgets('shows lock screen', (tester) async {
+  testWidgets('opens home when app lock is off', (tester) async {
     await tester.pumpWidget(const AccountantApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('Set your PIN'), findsOneWidget);
+    expect(find.text('Account balance'), findsOneWidget);
+    expect(find.text('Set your PIN'), findsNothing);
+  });
+
+  testWidgets('shows lock screen when PIN is enabled', (tester) async {
+    await AppLockStore.instance.setPin('1234');
+    AppSession.instance.reset();
+    BiometricAuth.instance.debugOverride(
+      available: () async => false,
+      authenticate: ({required reason}) async => false,
+    );
+
+    await tester.pumpWidget(const AccountantApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Accountant is locked'), findsOneWidget);
     expect(find.textContaining('4–6 digit PIN'), findsWidgets);
   });
 
@@ -56,22 +80,27 @@ void main() {
     expect(find.text('Income'), findsOneWidget);
     expect(find.text('Expense'), findsOneWidget);
     expect(find.text('0d'), findsOneWidget);
-    expect(find.text('LEFT'), findsOneWidget);
-    // Amounts hidden by default → percent masked like web.
-    expect(find.text('••'), findsOneWidget);
+    // No battery until income or allocated budgets exist.
+    expect(find.text('LEFT'), findsNothing);
     expect(find.text('Transactions'), findsOneWidget);
     expect(find.text('Income entries'), findsOneWidget);
     expect(find.text('Things to remember'), findsOneWidget);
-    expect(find.text('Average daily spend'), findsOneWidget);
+    // Seeded accounts / unplanned budget / daily log / security tips.
+    expect(
+      find.textContaining('Low balance').evaluate().isNotEmpty ||
+          find.textContaining('Set a PIN').evaluate().isNotEmpty ||
+          find.textContaining('isn’t planned').evaluate().isNotEmpty ||
+          find.textContaining('today’s transactions').evaluate().isNotEmpty ||
+          find.text('Track a few spends').evaluate().isNotEmpty,
+      isTrue,
+    );
     expect(find.text('Month pulse'), findsOneWidget);
-    expect(find.text('CATEGORIES'), findsOneWidget);
     expect(find.text('SPENDING'), findsOneWidget);
     expect(find.textContaining('days with activity'), findsOneWidget);
-    expect(find.textContaining('Most spend day'), findsOneWidget);
-    expect(find.textContaining('Most income day'), findsOneWidget);
-    expect(find.textContaining('Daily average spending'), findsOneWidget);
-    expect(find.text('Budget balance'), findsOneWidget);
-    expect(find.text('Food'), findsWidgets);
+    expect(find.textContaining('No spend logged this month yet'), findsOneWidget);
+    expect(find.textContaining('No income logged this month yet'), findsOneWidget);
+    // Live budget balance hides until category limits exist.
+    expect(find.text('Budget balance'), findsNothing);
   });
 
   testWidgets('switches tabs on phone, tablet, and desktop sizes', (
@@ -130,8 +159,24 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Settings'), findsOneWidget);
-    await tester.tap(find.text('Settings'));
+    expect(find.text('Scheduled payments'), findsOneWidget);
+    final moreScroll = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(
+      find.text('Alan Joshy'),
+      80,
+      scrollable: moreScroll,
+    );
+    expect(find.text('Alan Joshy'), findsOneWidget);
+    expect(find.text('LinkedIn'), findsOneWidget);
+    expect(find.text('Website'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Settings'),
+      80,
+      scrollable: moreScroll,
+    );
+    await tester.drag(moreScroll, const Offset(0, -120));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Settings').hitTestable().first);
     await tester.pumpAndSettle();
 
     expect(find.text('Theme'), findsOneWidget);
@@ -170,13 +215,31 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Settings'));
+    final moreScroll = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(
+      find.text('Settings'),
+      80,
+      scrollable: moreScroll,
+    );
+    await tester.drag(moreScroll, const Offset(0, -120));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Settings').hitTestable().first);
     await tester.pumpAndSettle();
 
+    final settingsScroll = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('currency-dropdown')),
+      120,
+      scrollable: settingsScroll,
+    );
     expect(find.text('CURRENCY'), findsOneWidget);
     expect(find.byKey(const ValueKey('currency-dropdown')), findsOneWidget);
     expect(find.text('Indian Rupee'), findsOneWidget);
 
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('currency-dropdown')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('currency-dropdown')));
     await tester.pumpAndSettle();
 
@@ -193,15 +256,18 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    await tester.tap(find.text('More').first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byIcon(Icons.home_rounded));
+    // Fresh home — currency ListenableBuilder above remounts the shell.
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light,
+        home: const MainShell(),
+      ),
+    );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.visibility_rounded));
-    await tester.pumpAndSettle();
-
+    // Amounts are visible by default on the balance card.
     expect(find.text('€0'), findsWidgets);
+    expect(find.byIcon(Icons.visibility_off_rounded), findsOneWidget);
   });
 
   testWidgets('lock screen scrolls under keyboard and landscape', (
@@ -303,13 +369,13 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.add_rounded));
     await tester.pumpAndSettle();
-    expect(find.text('Add transaction'), findsOneWidget);
+    expect(find.text('Add spend'), findsOneWidget);
 
     final fields = find.byType(TextField);
-    expect(fields, findsAtLeastNWidgets(3));
-    await tester.enterText(fields.at(0), 'Coffee');
-    await tester.enterText(fields.at(1), '45');
-    await tester.enterText(fields.at(2), 'Food');
+    expect(fields, findsAtLeastNWidgets(2));
+    // Amount first, then title (web field order); Food is default category.
+    await tester.enterText(fields.at(0), '45');
+    await tester.enterText(fields.at(1), 'Coffee');
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Save'));
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
     await tester.pump();
@@ -390,15 +456,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Settings'));
+    expect(find.text('Tags'), findsOneWidget);
+    await tester.tap(find.text('Tags'));
     await tester.pumpAndSettle();
-    final settingsScroll = find.byType(Scrollable).first;
-    await tester.scrollUntilVisible(
-      find.text('TAGS'),
-      120,
-      scrollable: settingsScroll,
-    );
-    expect(find.text('work'), findsOneWidget);
+    expect(find.text('#work'), findsOneWidget);
 
     await tester.tap(find.text('More').hitTestable().first);
     await tester.pumpAndSettle();
@@ -409,7 +470,7 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.tune_rounded));
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(ChoiceChip, 'work'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, '#work'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.tune_rounded));
     await tester.pumpAndSettle();
@@ -423,8 +484,8 @@ void main() {
     await tester.tap(find.text('Lunch'));
     await tester.pumpAndSettle();
     expect(find.text('Edit transaction'), findsOneWidget);
-    final editFields = find.byType(TextField);
-    await tester.enterText(editFields.at(0), 'Team lunch');
+    // Title field is prefilled with the transaction name.
+    await tester.enterText(find.widgetWithText(TextField, 'Lunch'), 'Team lunch');
     await tester.ensureVisible(
       find.widgetWithText(FilledButton, 'Save changes'),
     );
@@ -445,6 +506,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.binding.setSurfaceSize(const Size(390, 900));
 
+    await AppSettingsStore.instance.setMonthlyIncome(10000);
     await BudgetStore.instance.add(category: 'Food', limit: 3100);
     await TransactionStore.instance.add(
       title: 'Snack',
@@ -468,8 +530,9 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.pie_chart_rounded));
     await tester.pumpAndSettle();
-    // Budget category from seeded store appears on Budgets tab.
+    expect(find.text('This cycle'), findsOneWidget);
     expect(find.text('Food'), findsWidgets);
+    expect(find.text('Allocate to categories'), findsOneWidget);
   });
 
   testWidgets('more opens jar, creates and deletes a savings jar', (
@@ -525,5 +588,22 @@ void main() {
     AppToast.dismiss();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
+  });
+
+  testWidgets('more opens accounts and shows payment modes', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: MainShell()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.grid_view_rounded));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Accounts & payments'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Accounts & payments'), findsWidgets);
+    expect(find.text('Total balance'), findsOneWidget);
+    expect(find.text('Primary bank'), findsOneWidget);
+    expect(find.text('In-hand cash'), findsWidgets);
+    expect(find.text('UPI'), findsOneWidget);
+    expect(find.text('PAYMENT MODES'), findsOneWidget);
   });
 }

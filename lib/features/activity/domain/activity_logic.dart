@@ -1,6 +1,7 @@
 // Pure Activity filters and breakdowns (web activity.ts).
 
 import '../../transactions/data/transaction.dart';
+import 'cycle.dart';
 
 enum ActivityTypeFilter { all, income, expense }
 
@@ -90,21 +91,25 @@ String formatDayHeadingWithWeekday(String dayKey) {
 }
 
 ({DateTime start, DateTime end})? getActivityPeriodRange(
-  ActivityPeriodFilter period, [
+  ActivityPeriodFilter period, {
   DateTime? now,
-]) {
+  int cycleStartDay = 1,
+}) {
   if (period == ActivityPeriodFilter.all) return null;
   final ref = now ?? DateTime.now();
+  if (period == ActivityPeriodFilter.month) {
+    // Cash-flow cycle (salary / billing month), not calendar 1st–end.
+    final cycle = getCurrentCycleRange(cycleStartDay, ref);
+    return (start: cycle.start, end: cycle.end);
+  }
   final end = _startOfLocalDay(ref).add(
     const Duration(hours: 23, minutes: 59, seconds: 59, milliseconds: 999),
   );
   var start = _startOfLocalDay(ref);
   if (period == ActivityPeriodFilter.d7) {
     start = start.subtract(const Duration(days: 6));
-  } else if (period == ActivityPeriodFilter.d30) {
-    start = start.subtract(const Duration(days: 29));
   } else {
-    start = DateTime(ref.year, ref.month, 1);
+    start = start.subtract(const Duration(days: 29));
   }
   return (start: start, end: end);
 }
@@ -116,9 +121,16 @@ List<MoneyTransaction> filterActivityTransactions(
   String search = '',
   String? category,
   String? tag,
+  String? accountId,
+  String? paymentMode,
   DateTime? now,
+  int cycleStartDay = 1,
 }) {
-  final range = getActivityPeriodRange(period, now);
+  final range = getActivityPeriodRange(
+    period,
+    now: now,
+    cycleStartDay: cycleStartDay,
+  );
   final q = search.trim().toLowerCase();
 
   return transactions.where((t) {
@@ -135,6 +147,11 @@ List<MoneyTransaction> filterActivityTransactions(
     }
     if (category != null && t.category != category) return false;
     if (!_matchesTag(t, tag)) return false;
+    if (accountId != null && t.accountId != accountId) return false;
+    if (paymentMode != null &&
+        (t.paymentMode?.name ?? '') != paymentMode) {
+      return false;
+    }
     if (q.isNotEmpty && !_matchesSearch(t, q)) return false;
     return true;
   }).toList();
@@ -227,7 +244,9 @@ List<BreakdownRow> buildTagBreakdown(List<MoneyTransaction> transactions) {
     for (final e in map.entries)
       BreakdownRow(
         key: e.key,
-        label: e.key == '__none__' ? 'No tag' : e.key,
+        label: e.key == '__none__'
+            ? 'No tag'
+            : (e.key.startsWith('#') ? e.key : '#${e.key}'),
         amount: e.value.amount,
         count: e.value.count,
         share: total > 0 ? e.value.amount / total : 0,
@@ -238,16 +257,18 @@ List<BreakdownRow> buildTagBreakdown(List<MoneyTransaction> transactions) {
 
 List<DailySpendPoint> buildDailySpending(
   List<MoneyTransaction> transactions,
-  ActivityPeriodFilter period, [
+  ActivityPeriodFilter period, {
   DateTime? now,
-]) {
+  int cycleStartDay = 1,
+}) {
   final expenses = [
     for (final t in transactions)
       if (t.type == TransactionType.expense) t,
   ];
   final range = getActivityPeriodRange(
     period == ActivityPeriodFilter.all ? ActivityPeriodFilter.d30 : period,
-    now,
+    now: now,
+    cycleStartDay: cycleStartDay,
   );
   final end = range?.end ?? (now ?? DateTime.now());
   final start = range?.start ??
