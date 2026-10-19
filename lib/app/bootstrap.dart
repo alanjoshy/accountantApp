@@ -1,5 +1,7 @@
 // Startup wiring.
 
+import 'package:flutter/foundation.dart';
+
 import '../core/storage/local_storage.dart';
 import '../features/accounts/data/account_store.dart';
 import '../features/accounts/domain/account_style.dart';
@@ -42,6 +44,24 @@ Future<void> bootstrap() async {
   ScheduledPaymentStore.instance.load();
   PlannedReserveStore.instance.load();
   NotificationInboxStore.instance.load();
-  await NotificationService.instance.init();
-  await ReminderSync.refresh();
+
+  // Notifications must not block first paint — failures stay local.
+  try {
+    await NotificationService.instance.init().timeout(
+      const Duration(seconds: 8),
+    );
+  } catch (e, st) {
+    if (kDebugMode) {
+      debugPrint('NotificationService.init failed: $e\n$st');
+    }
+  }
+
+  // Reminder sync is best-effort; never prevent runApp.
+  try {
+    await ReminderSync.refresh().timeout(const Duration(seconds: 8));
+  } catch (e, st) {
+    if (kDebugMode) {
+      debugPrint('ReminderSync.refresh failed: $e\n$st');
+    }
+  }
 }

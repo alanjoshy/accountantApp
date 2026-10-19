@@ -1,5 +1,8 @@
 // Root MaterialApp.
 
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../features/auth/data/app_lock_store.dart';
@@ -59,7 +62,15 @@ class _AccountantAppState extends State<AccountantApp>
     }
     if (state != AppLifecycleState.resumed) return;
 
-    ReminderSync.refresh();
+    unawaited(() async {
+      try {
+        await ReminderSync.refresh();
+      } catch (e, st) {
+        if (kDebugMode) {
+          debugPrint('ReminderSync on resume failed: $e\n$st');
+        }
+      }
+    }());
 
     if (!session.shouldRelock()) return;
 
