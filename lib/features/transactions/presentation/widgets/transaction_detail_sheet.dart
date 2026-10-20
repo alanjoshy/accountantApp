@@ -123,17 +123,14 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
     );
   }
 
-  Map<String, double> _usageByCategory() {
+  Map<String, CategoryCycleUsage> _usageByCategory() {
     if (_type != TransactionType.expense) return const {};
-    final cycleDay = AppSettingsStore.instance.cycleStartDay;
-    final txs = TransactionStore.instance.transactions;
-    final map = <String, double>{};
-    for (final b in BudgetStore.instance.budgets) {
-      if (b.limit <= 0) continue;
-      final spent = spentForBudget(b, txs, cycleStartDay: cycleDay);
-      map[b.category] = (spent / b.limit) * 100;
-    }
-    return map;
+    return categoryCycleUsageByName(
+      BudgetStore.instance.budgets,
+      TransactionStore.instance.transactions,
+      cycleStartDay: AppSettingsStore.instance.cycleStartDay,
+      now: _date,
+    );
   }
 
   Future<void> _pickDate() async {
@@ -398,7 +395,7 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                   return CategoryOptionChip(
                     label: c,
                     selected: _category.toLowerCase() == c.toLowerCase(),
-                    usagePct: usage[c],
+                    usage: usage[c.toLowerCase()],
                     icon: style.icon,
                     accentColor: style.color,
                     onTap: () => setState(() => _category = c),

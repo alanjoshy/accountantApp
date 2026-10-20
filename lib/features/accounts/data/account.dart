@@ -69,7 +69,7 @@ class MoneyAccount {
 
   factory MoneyAccount.fromJson(Map<String, dynamic> json) {
     return MoneyAccount(
-      id: json['id'] as String,
+      id: json['id']?.toString() ?? '',
       name: json['name'] as String? ?? '',
       kind: normalizeAccountKind(json['kind']),
       balance: (json['balance'] as num?)?.toDouble() ?? 0,

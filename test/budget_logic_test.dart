@@ -43,6 +43,58 @@ MoneyTransaction _tx({
 }
 
 void main() {
+  test('listedBudgets drops fully past custom ranges', () {
+    final now = DateTime(2026, 10, 15);
+    final rows = [
+      _b(
+        id: 'old',
+        category: 'Food',
+        limit: 10,
+        start: '2026-08-01',
+        end: '2026-08-31',
+      ),
+      _b(id: 'now', category: 'Food', limit: 5000),
+      _b(
+        id: 'trip',
+        category: 'Trip',
+        limit: 200,
+        start: '2026-10-01',
+        end: '2026-10-20',
+      ),
+    ];
+    final listed = listedBudgets(rows, 1, now);
+    expect(listed.map((b) => b.id), containsAll(['now', 'trip']));
+    expect(listed.map((b) => b.id), isNot(contains('old')));
+  });
+
+  test('categoryCycleUsageByName uses this cycle remaining, not past limits', () {
+    final now = DateTime(2026, 10, 15);
+    final budgets = [
+      _b(
+        id: 'old',
+        category: 'Food',
+        limit: 10,
+        start: '2026-08-01',
+        end: '2026-08-31',
+      ),
+      _b(id: 'now', category: 'Food', limit: 1000),
+    ];
+    final txs = [
+      _tx(category: 'Food', amount: 200, date: '2026-10-10'),
+      _tx(category: 'Food', amount: 9999, date: '2026-08-10'),
+    ];
+    final usage = categoryCycleUsageByName(
+      budgets,
+      txs,
+      cycleStartDay: 1,
+      now: now,
+    );
+    expect(usage['food']!.limit, 1000);
+    expect(usage['food']!.spent, 200);
+    expect(usage['food']!.remaining, 800);
+    expect(usage['food']!.over, isFalse);
+  });
+
   test('listedBudgetsForWindow includes overlapping custom ranges', () {
     final bounds = (start: '2026-08-05', end: '2026-09-04');
     final rows = [

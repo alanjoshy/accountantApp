@@ -27,14 +27,34 @@ class LocalStorage {
     return prefs;
   }
 
-  static String? getString(String key) => _p.getString(key);
+  static String? getString(String key) {
+    try {
+      return _p.getString(key);
+    } catch (_) {
+      return null;
+    }
+  }
 
   static Future<bool> setString(String key, String value) =>
       _p.setString(key, value);
 
   static Future<bool> remove(String key) => _p.remove(key);
 
-  static bool? getBool(String key) => _p.getBool(key);
+  /// Reads a bool, also accepting legacy string flags (`'1'` / `'true'`).
+  static bool? getBool(String key) {
+    try {
+      return _p.getBool(key);
+    } catch (_) {
+      try {
+        final raw = _p.getString(key);
+        if (raw == null) return null;
+        final normalized = raw.trim().toLowerCase();
+        if (normalized == '1' || normalized == 'true') return true;
+        if (normalized == '0' || normalized == 'false') return false;
+      } catch (_) {}
+      return null;
+    }
+  }
 
   static Future<bool> setBool(String key, bool value) => _p.setBool(key, value);
 }

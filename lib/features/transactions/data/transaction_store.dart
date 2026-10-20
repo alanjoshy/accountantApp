@@ -21,6 +21,11 @@ class TransactionStore extends ChangeNotifier {
 
   List<MoneyTransaction> get transactions => _items;
 
+  @visibleForTesting
+  void unloadForTest() {
+    _items = const [];
+  }
+
   int get count => _items.length;
 
   int get incomeEntryCount =>
@@ -34,10 +39,18 @@ class TransactionStore extends ChangeNotifier {
     }
     try {
       final list = jsonDecode(raw) as List<dynamic>;
-      _items = [
-        for (final item in list)
-          MoneyTransaction.fromJson(Map<String, dynamic>.from(item as Map)),
-      ];
+      final loaded = <MoneyTransaction>[];
+      for (final item in list) {
+        if (item is! Map) continue;
+        try {
+          loaded.add(
+            MoneyTransaction.fromJson(Map<String, dynamic>.from(item)),
+          );
+        } catch (_) {
+          // Skip a bad row instead of dropping the whole backup.
+        }
+      }
+      _items = loaded;
       _sort();
     } catch (_) {
       _items = const [];

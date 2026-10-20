@@ -52,7 +52,9 @@ class BackupService {
     );
     await AppSettingsStore.instance.replace(merged);
 
-    await LocalStorage.setString(AppConstants.accountsSeededKey, '1');
+    // Must match AccountStore.ensureSeeded() which reads a bool, not a string.
+    // Writing '1' here used to throw on the next launch and skip transaction load.
+    await LocalStorage.setBool(AppConstants.accountsSeededKey, true);
     await LocalStorage.setString(AppConstants.budgetsSeededKey, '1');
     await LocalStorage.setString(AppConstants.budgetsPermanentKey, '1');
 

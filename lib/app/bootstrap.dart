@@ -18,32 +18,58 @@ import '../features/transactions/data/transaction_store.dart';
 import 'currency/currency_controller.dart';
 import 'theme/theme_controller.dart';
 
+void _trySync(String label, void Function() fn) {
+  try {
+    fn();
+  } catch (e, st) {
+    if (kDebugMode) {
+      debugPrint('bootstrap $label failed: $e\n$st');
+    }
+  }
+}
+
+Future<void> _tryAsync(String label, Future<void> Function() fn) async {
+  try {
+    await fn();
+  } catch (e, st) {
+    if (kDebugMode) {
+      debugPrint('bootstrap $label failed: $e\n$st');
+    }
+  }
+}
+
 Future<void> bootstrap() async {
   await LocalStorage.init();
-  ThemeController.instance.load();
-  CurrencyController.instance.load();
-  JarStore.instance.load();
-  DebtStore.instance.load();
-  AccountStore.instance.load();
-  await AccountStore.instance.ensureSeeded();
-  TransactionStore.instance.load();
-  AppSettingsStore.instance.load();
+  _trySync('theme', ThemeController.instance.load);
+  _trySync('currency', CurrencyController.instance.load);
+  _trySync('jars', JarStore.instance.load);
+  _trySync('debts', DebtStore.instance.load);
+  _trySync('accounts', AccountStore.instance.load);
+  await _tryAsync('account seed', AccountStore.instance.ensureSeeded);
+  _trySync('transactions', TransactionStore.instance.load);
+  _trySync('settings', AppSettingsStore.instance.load);
   // Prefer bank as default debit account when unset.
   if (AppSettingsStore.instance.defaultAccountId == null &&
       AccountStore.instance.accounts.isNotEmpty) {
     final bank = AccountStore.instance.accounts
         .where((a) => a.kind == AccountKind.bank)
         .firstOrNull;
-    await AppSettingsStore.instance.setDefaultAccountId(
-      bank?.id ?? AccountStore.instance.accounts.first.id,
+    await _tryAsync(
+      'default account',
+      () => AppSettingsStore.instance.setDefaultAccountId(
+        bank?.id ?? AccountStore.instance.accounts.first.id,
+      ),
     );
   }
-  BudgetStore.instance.load();
-  await BudgetStore.instance.ensureDefaultCategories();
-  await BudgetStore.instance.syncCycles();
-  ScheduledPaymentStore.instance.load();
-  PlannedReserveStore.instance.load();
-  NotificationInboxStore.instance.load();
+  _trySync('budgets', BudgetStore.instance.load);
+  await _tryAsync(
+    'budget seed',
+    BudgetStore.instance.ensureDefaultCategories,
+  );
+  await _tryAsync('budget cycles', BudgetStore.instance.syncCycles);
+  _trySync('scheduled', ScheduledPaymentStore.instance.load);
+  _trySync('planned', PlannedReserveStore.instance.load);
+  _trySync('inbox', NotificationInboxStore.instance.load);
 
   // Notifications must not block first paint — failures stay local.
   try {

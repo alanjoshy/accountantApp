@@ -93,13 +93,13 @@ class MoneyTransaction {
     final accountRaw = json['accountId'];
     final toRaw = json['toAccountId'];
     return MoneyTransaction(
-      id: json['id'] as String,
+      id: json['id']?.toString() ?? '',
       title: json['title'] as String? ?? '',
-      amount: (json['amount'] as num).toDouble(),
+      amount: (json['amount'] as num?)?.toDouble() ?? 0,
       type: type,
       category: json['category'] as String? ?? '',
-      date: json['date'] as String,
-      createdAt: json['createdAt'] as String? ?? json['date'] as String,
+      date: json['date']?.toString() ?? '',
+      createdAt: json['createdAt']?.toString() ?? json['date']?.toString() ?? '',
       note: json['note'] as String?,
       tags: [for (final t in rawTags) t.toString()],
       paymentMode: tryParsePaymentMode(json['paymentMode']),

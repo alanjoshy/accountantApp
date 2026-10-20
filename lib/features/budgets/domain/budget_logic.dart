@@ -22,6 +22,67 @@ bool isCycleScopedBudget(Budget budget, ({String start, String end}) cycle) {
       budget.endDate!.trim() == cycle.end;
 }
 
+/// Categories on the live plan: this cycle’s rows, plus custom ranges
+/// that are not fully in the past (web `listedBudgets`).
+List<Budget> listedBudgets(
+  List<Budget> budgets,
+  int cycleStartDay, [
+  DateTime? now,
+]) {
+  final cycle = getCurrentCycleDayBounds(cycleStartDay, now);
+  return [
+    for (final b in budgets)
+      if (isCycleScopedBudget(b, cycle) ||
+          (b.endDate?.trim().isEmpty ?? true) ||
+          b.endDate!.trim().compareTo(cycle.start) >= 0)
+        b,
+  ];
+}
+
+/// Spent / allocated for one category in the live cycle.
+class CategoryCycleUsage {
+  const CategoryCycleUsage({required this.spent, required this.limit});
+
+  final double spent;
+  final double limit;
+
+  double get remaining {
+    final left = limit - spent;
+    return left < 0 ? 0 : left;
+  }
+
+  bool get over => spent > limit && limit > 0;
+
+  double get ratio =>
+      limit > 0 ? (spent / limit).clamp(0.0, 1.0) : 0.0;
+}
+
+/// Map of lowercase category → this cycle’s allocated spend/limit.
+Map<String, CategoryCycleUsage> categoryCycleUsageByName(
+  List<Budget> budgets,
+  List<MoneyTransaction> transactions, {
+  int cycleStartDay = 1,
+  DateTime? now,
+}) {
+  final listed = listedBudgets(budgets, cycleStartDay, now);
+  final map = <String, CategoryCycleUsage>{};
+  for (final b in listed) {
+    if (!(b.limit > 0) || b.category.trim().isEmpty) continue;
+    final key = b.category.trim().toLowerCase();
+    final spent = spentForBudget(
+      b,
+      transactions,
+      now: now,
+      cycleStartDay: cycleStartDay,
+    );
+    final next = CategoryCycleUsage(spent: spent, limit: b.limit);
+    final existing = map[key];
+    if (existing != null && existing.limit >= next.limit) continue;
+    map[key] = next;
+  }
+  return map;
+}
+
 bool matchesBounds(Budget budget, ({String start, String end}) bounds) {
   return budget.startDate?.trim() == bounds.start &&
       budget.endDate?.trim() == bounds.end;
