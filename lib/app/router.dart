@@ -6,14 +6,15 @@ import '../core/navigation/app_page_route.dart';
 import '../core/navigation/app_tab.dart';
 import '../features/auth/presentation/screens/lock_screen.dart';
 import '../features/shell/presentation/screens/main_shell.dart';
+import 'routes.dart';
 
 class AppRouter {
   AppRouter._();
 
   static final navigatorKey = GlobalKey<NavigatorState>();
 
-  static const lock = '/lock';
-  static const home = '/home';
+  static const lock = AppRoutes.lock;
+  static const home = AppRoutes.home;
 
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {

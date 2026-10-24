@@ -204,7 +204,11 @@ class _BudgetFormSheetState extends State<BudgetFormSheet> {
                 style: TextStyle(fontSize: 12, color: colors.textMuted),
               ),
               const SizedBox(height: 16),
-              _FieldLabel('Category', colors),
+              _FieldLabel(
+                'Category',
+                colors,
+                Icons.label_outline_rounded,
+              ),
               TextField(
                 controller: _category,
                 textInputAction: TextInputAction.next,
@@ -217,10 +221,18 @@ class _BudgetFormSheetState extends State<BudgetFormSheet> {
                     });
                   }
                 },
-                decoration: _decoration(colors, hint: 'e.g. Grocery'),
+                decoration: _decoration(
+                  colors,
+                  hint: 'e.g. Grocery',
+                  prefixIcon: Icons.category_outlined,
+                ),
               ),
               const SizedBox(height: 14),
-              _FieldLabel('Icon', colors),
+              _FieldLabel(
+                'Icon',
+                colors,
+                Icons.emoji_emotions_outlined,
+              ),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -239,7 +251,11 @@ class _BudgetFormSheetState extends State<BudgetFormSheet> {
                 ],
               ),
               const SizedBox(height: 14),
-              _FieldLabel('Color', colors),
+              _FieldLabel(
+                'Color',
+                colors,
+                Icons.palette_outlined,
+              ),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -268,7 +284,11 @@ class _BudgetFormSheetState extends State<BudgetFormSheet> {
                 ],
               ),
               const SizedBox(height: 14),
-              _FieldLabel('Allocate from income', colors),
+              _FieldLabel(
+                'Allocate from income',
+                colors,
+                Icons.account_balance_wallet_outlined,
+              ),
               DecoratedBox(
                 decoration: BoxDecoration(
                   color: colors.surfaceHover,
@@ -279,6 +299,12 @@ class _BudgetFormSheetState extends State<BudgetFormSheet> {
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   child: Row(
                     children: [
+                      Icon(
+                        Icons.payments_outlined,
+                        size: 22,
+                        color: colors.textMuted,
+                      ),
+                      const SizedBox(width: 10),
                       Text(
                         symbol,
                         style: TextStyle(
@@ -387,11 +413,18 @@ class _BudgetFormSheetState extends State<BudgetFormSheet> {
     );
   }
 
-  InputDecoration _decoration(AppPalette colors, {required String hint}) {
+  InputDecoration _decoration(
+    AppPalette colors, {
+    required String hint,
+    IconData? prefixIcon,
+  }) {
     return InputDecoration(
       hintText: hint,
       filled: true,
       fillColor: colors.surfaceHover,
+      prefixIcon: prefixIcon == null
+          ? null
+          : Icon(prefixIcon, size: 20, color: colors.textMuted),
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -410,22 +443,29 @@ class _BudgetFormSheetState extends State<BudgetFormSheet> {
 }
 
 class _FieldLabel extends StatelessWidget {
-  const _FieldLabel(this.text, this.colors);
+  const _FieldLabel(this.text, this.colors, this.icon);
 
   final String text;
   final AppPalette colors;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(left: 4, bottom: 6),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: colors.textSecondary,
-        ),
+      child: Row(
+        children: [
+          Icon(icon, size: 15, color: colors.textMuted),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: colors.textSecondary,
+            ),
+          ),
+        ],
       ),
     );
   }

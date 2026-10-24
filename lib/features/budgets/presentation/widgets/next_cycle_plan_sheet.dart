@@ -16,6 +16,7 @@ import '../../../settings/data/app_settings.dart';
 import '../../../settings/data/app_settings_store.dart';
 import '../../../transactions/data/transaction_store.dart';
 import '../../data/budget.dart';
+import '../../data/category_style.dart';
 import '../../data/next_cycle_budget.dart';
 import '../../domain/budget_cycle.dart';
 import '../../domain/budget_logic.dart';
@@ -380,13 +381,23 @@ class _NextCyclePlanSheetState extends State<NextCyclePlanSheet> {
                 ),
               ],
               const SizedBox(height: 14),
-              Text(
-                'Next cycle income',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: colors.textSecondary,
-                ),
+              Row(
+                children: [
+                  Icon(
+                    Icons.payments_outlined,
+                    size: 15,
+                    color: colors.textMuted,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Next cycle income',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: colors.textSecondary,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 6),
               DecoratedBox(
@@ -399,6 +410,12 @@ class _NextCyclePlanSheetState extends State<NextCyclePlanSheet> {
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   child: Row(
                     children: [
+                      Icon(
+                        Icons.account_balance_wallet_outlined,
+                        size: 18,
+                        color: colors.textMuted,
+                      ),
+                      const SizedBox(width: 10),
                       Text(
                         symbol,
                         style: TextStyle(
@@ -431,6 +448,10 @@ class _NextCyclePlanSheetState extends State<NextCyclePlanSheet> {
               const SizedBox(height: 10),
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
+                secondary: Icon(
+                  Icons.redo_rounded,
+                  color: colors.textMuted,
+                ),
                 title: Text(
                   'Carry forward leftover',
                   style: TextStyle(
@@ -460,13 +481,23 @@ class _NextCyclePlanSheetState extends State<NextCyclePlanSheet> {
               ),
               const SizedBox(height: 12),
               for (final b in widget.currentCycleBudgets) ...[
-                Text(
-                  b.category,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: colors.textSecondary,
-                  ),
+                Row(
+                  children: [
+                    Icon(
+                      categoryIconData(b.icon),
+                      size: 16,
+                      color: categoryColorFromHex(b.color),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      b.category,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 6),
                 DecoratedBox(
@@ -479,6 +510,12 @@ class _NextCyclePlanSheetState extends State<NextCyclePlanSheet> {
                     padding: const EdgeInsets.symmetric(horizontal: 14),
                     child: Row(
                       children: [
+                        Icon(
+                          Icons.payments_outlined,
+                          size: 18,
+                          color: colors.textMuted,
+                        ),
+                        const SizedBox(width: 10),
                         Text(
                           symbol,
                           style: TextStyle(

@@ -14,6 +14,7 @@ import '../../data/budget_store.dart';
 import '../../data/category_style.dart';
 import '../../domain/budget_logic.dart';
 import '../widgets/allocate_budget_sheet.dart';
+import '../widgets/budget_charts.dart';
 import '../widgets/budget_form_sheet.dart';
 import '../widgets/income_sheet.dart';
 import '../widgets/next_cycle_plan_sheet.dart';
@@ -155,12 +156,14 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 560),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Row(
                       children: [
                         Expanded(
                           child: Column(
+                            mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
@@ -373,6 +376,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
+                                    mainAxisSize: MainAxisSize.min,
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
@@ -488,6 +492,14 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                             : null,
                       )
                     else ...[
+                      BudgetCharts(
+                        budgets: listedBudgets,
+                        transactions: txs,
+                        monthlyIncome:
+                            viewIncome > 0 ? viewIncome : allocated,
+                        cycleStartDay: cycleDay,
+                      ),
+                      const SizedBox(height: 14),
                       Text(
                         'Categories',
                         style: TextStyle(
@@ -686,6 +698,23 @@ class _IncomeCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: colors.accentMuted,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: colors.accent.withValues(alpha: 0.2),
+                  ),
+                ),
+                child: Icon(
+                  Icons.payments_outlined,
+                  color: colors.accent,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -833,20 +862,22 @@ class _BudgetTile extends StatelessWidget {
               Row(
                 children: [
                   Container(
-                    width: 8,
-                    height: 8,
+                    width: 22,
+                    height: 22,
                     decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(7),
+                      border: Border.all(
+                        color: accent.withValues(alpha: 0.45),
+                      ),
+                    ),
+                    child: Icon(
+                      categoryIconData(budget.icon),
+                      size: 13,
                       color: accent,
-                      shape: BoxShape.circle,
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  Icon(
-                    categoryIconData(budget.icon),
-                    size: 14,
-                    color: accent,
-                  ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       budget.category,

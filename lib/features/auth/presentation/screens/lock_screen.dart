@@ -5,7 +5,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../../app/router.dart';
+import '../../../../app/routes.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_spacing.dart';
 import '../../../../app/theme/app_text_styles.dart';
@@ -44,7 +44,10 @@ class _LockScreenState extends State<LockScreen> {
   Timer? _verifyTimer;
   bool _verifying = false;
   bool _biometricAvailable = false;
+  bool _biometricPrompting = false;
+  bool _pinAutoFocus = true;
   BiometricKind _biometricKind = BiometricKind.none;
+  String _bioNotice = '';
 
   bool get _hasPin => widget.hasPin?.call() ?? AppLockStore.instance.hasPin;
 
@@ -63,7 +66,9 @@ class _LockScreenState extends State<LockScreen> {
   void initState() {
     super.initState();
     _setupMode = !_hasPin;
-    if (!_setupMode && widget.tryBiometricOnStart) {
+    if (!_setupMode) {
+      // Don't fight the system biometric sheet with the PIN keyboard.
+      _pinAutoFocus = !widget.tryBiometricOnStart;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _probeBiometric();
       });
@@ -80,27 +85,43 @@ class _LockScreenState extends State<LockScreen> {
       _biometricAvailable = available;
       _biometricKind = kind;
     });
-    if (available && AppLockStore.instance.canUseBiometricUnlock) {
+    if (widget.tryBiometricOnStart &&
+        available &&
+        AppLockStore.instance.canUseBiometricUnlock) {
       await _tryBiometric();
     }
+    if (!mounted) return;
+    setState(() => _pinAutoFocus = true);
   }
 
   Future<void> _tryBiometric() async {
-    if (_setupMode || _busy) return;
+    if (_setupMode || _busy || _biometricPrompting) return;
     if (!AppLockStore.instance.canUseBiometricUnlock) return;
+    FocusManager.instance.primaryFocus?.unfocus();
     AppSession.instance.setAuthenticating(true);
-    setState(() => _busy = true);
-    final ok = await BiometricAuth.instance.authenticate(
+    setState(() {
+      _biometricPrompting = true;
+      _bioNotice = '';
+      _pinAutoFocus = false;
+    });
+    final result = await BiometricAuth.instance.authenticate(
       reason: 'Unlock Accountant',
     );
     AppSession.instance.setAuthenticating(false);
     if (!mounted) return;
-    if (ok) {
+    if (result.success) {
       HapticFeedback.mediumImpact();
-      _enterApp(viaPin: false);
+      await _enterApp(viaPin: false);
       return;
     }
-    setState(() => _busy = false);
+    setState(() {
+      _biometricPrompting = false;
+      _pinAutoFocus = true;
+      _bioNotice = result.userMessage ?? '';
+      if (result.status == BiometricAuthStatus.unavailable) {
+        _biometricAvailable = false;
+      }
+    });
   }
 
   Future<void> _enterApp({required bool viaPin}) async {
@@ -109,12 +130,16 @@ class _LockScreenState extends State<LockScreen> {
     }
     AppSession.instance.unlock();
     if (!mounted) return;
-    Navigator.of(context).pushReplacementNamed(AppRouter.home);
+    Navigator.of(context).pushReplacementNamed(AppRoutes.home);
   }
 
   @override
   void dispose() {
     _verifyTimer?.cancel();
+    if (_biometricPrompting) {
+      unawaited(BiometricAuth.instance.stop());
+      AppSession.instance.setAuthenticating(false);
+    }
     super.dispose();
   }
 
@@ -295,8 +320,19 @@ class _LockScreenState extends State<LockScreen> {
                             error: _error.isNotEmpty,
                             errorMessage: _error.isEmpty ? null : _error,
                             hint: _hint,
-                            autoFocus: true,
+                            autoFocus: _pinAutoFocus && !_biometricPrompting,
                           ),
+                          if (_bioNotice.isNotEmpty) ...[
+                            const SizedBox(height: AppSpacing.sm),
+                            Text(
+                              _bioNotice,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colors.textMuted,
+                              ),
+                            ),
+                          ],
                           if (weeklyNote) ...[
                             const SizedBox(height: AppSpacing.md),
                             Text(
@@ -311,7 +347,9 @@ class _LockScreenState extends State<LockScreen> {
                           if (showBio) ...[
                             const SizedBox(height: AppSpacing.md),
                             TextButton.icon(
-                              onPressed: _busy ? null : _tryBiometric,
+                              onPressed: (_busy || _biometricPrompting)
+                                  ? null
+                                  : _tryBiometric,
                               icon: Icon(
                                 BiometricAuth.instance.iconFor(_biometricKind),
                               ),

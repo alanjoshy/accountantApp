@@ -9,6 +9,8 @@ import '../../../../app/theme/app_spacing.dart';
 import '../../../../core/widgets/app_toast.dart';
 import '../../../accounts/data/account_store.dart';
 import '../../../accounts/domain/payments.dart';
+import '../../../budgets/data/budget_store.dart';
+import '../../../transactions/presentation/widgets/category_option_chip.dart';
 import '../../data/scheduled_payment.dart';
 import '../../data/scheduled_payment_store.dart';
 import '../../domain/scheduled_logic.dart';
@@ -49,6 +51,7 @@ class ScheduledPaymentsScreen extends StatelessWidget {
         listenable: Listenable.merge([
           ScheduledPaymentStore.instance,
           AccountStore.instance,
+          BudgetStore.instance,
           CurrencyController.instance,
         ]),
         builder: (context, _) {
@@ -335,9 +338,28 @@ class _PaymentCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 6),
-            Text(
-              '${format(item.amount)} · ${item.category} · ${repeatLabel(item.repeat)}',
-              style: TextStyle(fontSize: 13, color: colors.textSecondary),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  format(item.amount),
+                  style: TextStyle(fontSize: 13, color: colors.textSecondary),
+                ),
+                Text(
+                  '·',
+                  style: TextStyle(fontSize: 13, color: colors.textSecondary),
+                ),
+                CategoryNameChip(
+                  category: item.category,
+                  budgets: BudgetStore.instance.budgets,
+                ),
+                Text(
+                  '· ${repeatLabel(item.repeat)}',
+                  style: TextStyle(fontSize: 13, color: colors.textSecondary),
+                ),
+              ],
             ),
             const SizedBox(height: 2),
             Text(

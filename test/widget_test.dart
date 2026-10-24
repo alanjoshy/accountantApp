@@ -19,6 +19,7 @@ import 'package:accountant/features/auth/domain/biometric_auth.dart';
 import 'package:accountant/features/auth/domain/sensitive_access_session.dart';
 import 'package:accountant/features/auth/presentation/screens/lock_screen.dart';
 import 'package:accountant/features/budgets/data/budget_store.dart';
+import 'package:accountant/features/home/presentation/widgets/budget_balance_card.dart';
 import 'package:accountant/features/settings/data/app_settings_store.dart';
 import 'package:accountant/features/shell/presentation/screens/main_shell.dart';
 import 'package:accountant/features/transactions/data/transaction.dart';
@@ -102,6 +103,48 @@ void main() {
     // Live budget balance hides until category limits exist.
     expect(find.text('Budget balance'), findsNothing);
   });
+
+  testWidgets(
+    'budget balance toggle is compact, weekly-first, weekly default',
+    (tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+
+      await BudgetStore.instance.add(category: 'Food', limit: 3100);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light,
+          home: const Scaffold(
+            body: SingleChildScrollView(child: BudgetBalanceCard()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Budget balance'), findsOneWidget);
+      expect(find.text('Weekly'), findsOneWidget);
+      expect(find.text('Monthly'), findsOneWidget);
+      expect(find.textContaining('This week'), findsOneWidget);
+
+      final weeklyLeft = tester.getTopLeft(find.text('Weekly')).dx;
+      final monthlyLeft = tester.getTopLeft(find.text('Monthly')).dx;
+      expect(weeklyLeft, lessThan(monthlyLeft));
+
+      final cardWidth = tester.getSize(find.byType(BudgetBalanceCard)).width;
+      final toggleSpan =
+          tester.getRect(find.text('Monthly')).right -
+          tester.getRect(find.text('Weekly')).left;
+      expect(toggleSpan, lessThan(cardWidth * 0.7));
+
+      await tester.tap(find.text('Monthly'));
+      await tester.pump();
+      expect(
+        find.text('Allocated, spent, and remaining per category'),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('switches tabs on phone, tablet, and desktop sizes', (
     tester,
@@ -475,12 +518,19 @@ void main() {
     await tester.tap(find.byIcon(Icons.tune_rounded));
     await tester.pumpAndSettle();
 
-    final activityScroll = find.byType(Scrollable).first;
+    final activityScroll = find
+        .descendant(
+          of: find.byKey(const ValueKey('activity-scroll')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
     await tester.scrollUntilVisible(
       find.text('Lunch'),
-      80,
+      120,
       scrollable: activityScroll,
     );
+    await tester.ensureVisible(find.text('Lunch'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Lunch'));
     await tester.pumpAndSettle();
     expect(find.text('Edit transaction'), findsOneWidget);

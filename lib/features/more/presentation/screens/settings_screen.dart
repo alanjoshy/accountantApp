@@ -1295,13 +1295,15 @@ class _SecuritySectionState extends State<_SecuritySection> {
                   ),
                 ),
               ],
-              if (_biometricAvailable && lock.hasPin) ...[
+              if ((_biometricAvailable || lock.biometricEnabled) &&
+                  lock.hasPin) ...[
                 Divider(height: 1, color: colors.border),
                 _SecurityToggleRow(
                   icon: Icons.fingerprint_rounded,
                   title: 'Fingerprint / Face ID',
-                  subtitle:
-                      'Unlock with biometrics. PIN is still required once a week.',
+                  subtitle: _biometricAvailable
+                      ? 'Unlock with biometrics. PIN is still required once a week.'
+                      : 'Biometrics unavailable on this device.',
                   value: lock.biometricEnabled && lock.isEnabled,
                   colors: colors,
                   tint: const Color(0xFF0891B2),
@@ -1309,16 +1311,25 @@ class _SecuritySectionState extends State<_SecuritySection> {
                       ? (v) async {
                           HapticFeedback.selectionClick();
                           if (v) {
+                            if (!_biometricAvailable) {
+                              AppToast.warning(
+                                context,
+                                'Biometrics unavailable. Use PIN to unlock.',
+                              );
+                              return;
+                            }
                             AppSession.instance.setAuthenticating(true);
-                            final ok = await BiometricAuth.instance.authenticate(
+                            final result =
+                                await BiometricAuth.instance.authenticate(
                               reason: 'Enable biometrics for Accountant',
                             );
                             AppSession.instance.setAuthenticating(false);
-                            if (!ok) {
+                            if (!result.success) {
                               if (context.mounted) {
                                 AppToast.warning(
                                   context,
-                                  'Biometrics not confirmed.',
+                                  result.userMessage ??
+                                      'Biometrics not confirmed.',
                                 );
                               }
                               return;

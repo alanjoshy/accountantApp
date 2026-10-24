@@ -29,6 +29,53 @@ import '../../../budgets/domain/budget_logic.dart';
   );
 }
 
+/// Small tinted icon chip + category name for list rows and meta lines.
+class CategoryNameChip extends StatelessWidget {
+  const CategoryNameChip({
+    super.key,
+    required this.category,
+    this.budgets = const [],
+    this.textStyle,
+  });
+
+  final String category;
+  final Iterable<Budget> budgets;
+  final TextStyle? textStyle;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final style = resolveCategoryStyle(category, budgets: budgets);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 22,
+          height: 22,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: style.color.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: Icon(style.icon, size: 13, color: style.color),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          category,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: textStyle ??
+              TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: colors.textSecondary,
+              ),
+        ),
+      ],
+    );
+  }
+}
+
 class CategoryOptionChip extends StatelessWidget {
   const CategoryOptionChip({
     super.key,

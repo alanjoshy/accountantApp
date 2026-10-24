@@ -14,6 +14,7 @@ import '../../../accounts/presentation/widgets/payment_mode_picker.dart';
 import '../../../budgets/data/budget_store.dart';
 import '../../../settings/data/app_settings_store.dart';
 import '../../../transactions/data/transaction_store.dart';
+import '../../../transactions/presentation/widgets/category_option_chip.dart';
 import '../../../transactions/presentation/widgets/tag_picker.dart';
 import '../../data/scheduled_payment.dart';
 import '../../data/scheduled_payment_store.dart';
@@ -240,17 +241,19 @@ class _ScheduledFormSheetState extends State<ScheduledFormSheet> {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: [
-                for (final c in cats)
-                  ChoiceChip(
-                    label: Text(c),
-                    selected: _category == c,
-                    onSelected: (_) {
-                      HapticFeedback.selectionClick();
-                      setState(() => _category = c);
-                    },
-                  ),
-              ],
+              children: cats.map((c) {
+                final style = resolveCategoryStyle(
+                  c,
+                  budgets: BudgetStore.instance.budgets,
+                );
+                return CategoryOptionChip(
+                  label: c,
+                  selected: _category == c,
+                  icon: style.icon,
+                  accentColor: style.color,
+                  onTap: () => setState(() => _category = c),
+                );
+              }).toList(),
             ),
             const SizedBox(height: 14),
             Text(

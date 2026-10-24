@@ -1,7 +1,6 @@
 // Create / edit a planned budget reserve.
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../../app/currency/currency_controller.dart';
 import '../../../../app/theme/app_colors.dart';
@@ -10,6 +9,7 @@ import '../../../../core/widgets/app_toast.dart';
 import '../../../activity/domain/cycle.dart';
 import '../../../budgets/data/budget_store.dart';
 import '../../../scheduled/domain/scheduled_logic.dart';
+import '../../../transactions/presentation/widgets/category_option_chip.dart';
 import '../../data/planned_reserve.dart';
 import '../../data/planned_reserve_store.dart';
 
@@ -232,17 +232,19 @@ class _PlannedFormSheetState extends State<PlannedFormSheet> {
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: [
-                  for (final c in cats)
-                    ChoiceChip(
-                      label: Text(c),
-                      selected: _category == c,
-                      onSelected: (_) {
-                        HapticFeedback.selectionClick();
-                        setState(() => _category = c);
-                      },
-                    ),
-                ],
+                children: cats.map((c) {
+                  final style = resolveCategoryStyle(
+                    c,
+                    budgets: BudgetStore.instance.budgets,
+                  );
+                  return CategoryOptionChip(
+                    label: c,
+                    selected: _category == c,
+                    icon: style.icon,
+                    accentColor: style.color,
+                    onTap: () => setState(() => _category = c),
+                  );
+                }).toList(),
               ),
               const SizedBox(height: 12),
               ListTile(

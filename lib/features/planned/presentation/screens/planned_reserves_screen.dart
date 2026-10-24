@@ -8,7 +8,9 @@ import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_spacing.dart';
 import '../../../../core/widgets/app_toast.dart';
 import '../../../activity/domain/cycle.dart';
+import '../../../budgets/data/budget_store.dart';
 import '../../../settings/data/app_settings_store.dart';
+import '../../../transactions/presentation/widgets/category_option_chip.dart';
 import '../../data/planned_reserve.dart';
 import '../../data/planned_reserve_store.dart';
 import '../../domain/planned_logic.dart';
@@ -49,6 +51,7 @@ class PlannedReservesScreen extends StatelessWidget {
         listenable: Listenable.merge([
           PlannedReserveStore.instance,
           AppSettingsStore.instance,
+          BudgetStore.instance,
           CurrencyController.instance,
         ]),
         builder: (context, _) {
@@ -245,10 +248,29 @@ class _ReserveCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      '${item.category} · ${item.dueDate}'
-                      '${item.appliedCycleStart != null ? ' · reserved' : ''}',
-                      style: TextStyle(fontSize: 12, color: colors.textMuted),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 2,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        CategoryNameChip(
+                          category: item.category,
+                          budgets: BudgetStore.instance.budgets,
+                          textStyle: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: colors.textMuted,
+                          ),
+                        ),
+                        Text(
+                          '· ${item.dueDate}'
+                          '${item.appliedCycleStart != null ? ' · reserved' : ''}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colors.textMuted,
+                          ),
+                        ),
+                      ],
                     ),
                     if (item.note != null && item.note!.isNotEmpty) ...[
                       const SizedBox(height: 2),

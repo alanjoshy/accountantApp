@@ -90,7 +90,7 @@ class _MonthPulseCardState extends State<MonthPulseCard> {
             border: Border.all(color: colors.border),
           ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
+            padding: const EdgeInsets.all(10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -150,24 +150,67 @@ class _MonthPulseCardState extends State<MonthPulseCard> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 10),
                 LayoutBuilder(
                   builder: (context, constraints) {
-                    final stack = constraints.maxWidth < 320;
-                    const panelH = 136.0;
-                    final cats = _Panel(
-                      colors: colors,
-                      fill: true,
-                      child: _CategoriesChart(
+                    const gap = 8.0;
+                    const heatPad = 6.0;
+                    const heatGap = 3.0;
+                    const cols = 7;
+                    const rows = 6;
+                    const weekdayH = 14.0;
+                    const headerH = 18.0;
+                    const headerGap = 6.0;
+
+                    final stack = constraints.maxWidth < 340;
+                    final colW = stack
+                        ? constraints.maxWidth
+                        : (constraints.maxWidth - gap) / 2;
+                    final innerW = (colW - heatPad * 2).clamp(0.0, double.infinity);
+                    final cell = ((innerW - (cols - 1) * heatGap) / cols)
+                        .clamp(8.0, double.infinity);
+                    final heatGridH =
+                        weekdayH + rows * cell + (rows - 1) * heatGap;
+                    // Both bordered panels share this height.
+                    final panelH = heatPad * 2 + heatGridH;
+                    final colH = headerH + headerGap + panelH;
+
+                    Widget section({
+                      required Widget header,
+                      required Widget panelChild,
+                    }) {
+                      return SizedBox(
+                        height: colH,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SizedBox(height: headerH, child: header),
+                            const SizedBox(height: headerGap),
+                            SizedBox(
+                              height: panelH,
+                              child: _Panel(
+                                colors: colors,
+                                fill: true,
+                                padding: const EdgeInsets.all(heatPad),
+                                child: panelChild,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    final cats = section(
+                      header: _CategoriesHeader(colors: colors),
+                      panelChild: _CategoriesChart(
                         categories: categories,
                         maxLimit: maxLimit,
                         colors: colors,
                       ),
                     );
-                    final spend = _Panel(
-                      colors: colors,
-                      fill: true,
-                      child: _SpendingHeat(
+                    final spend = section(
+                      header: _SpendingHeader(colors: colors),
+                      panelChild: _SpendingHeatGrid(
                         weekdays: _weekdays,
                         cells: snap.heat,
                         colors: colors,
@@ -176,28 +219,26 @@ class _MonthPulseCardState extends State<MonthPulseCard> {
 
                     if (stack) {
                       return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          SizedBox(height: panelH, child: cats),
-                          const SizedBox(height: 4),
-                          SizedBox(height: panelH, child: spend),
+                          cats,
+                          const SizedBox(height: 10),
+                          spend,
                         ],
                       );
                     }
 
-                    return SizedBox(
-                      height: panelH,
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(child: cats),
-                          const SizedBox(width: 4),
-                          Expanded(child: spend),
-                        ],
-                      ),
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: cats),
+                        const SizedBox(width: gap),
+                        Expanded(child: spend),
+                      ],
                     );
                   },
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 8),
                 Text(
                   '${snap.activeDays}/${snap.daysInMonth} days with activity',
                   style: TextStyle(
@@ -394,11 +435,13 @@ class _Panel extends StatelessWidget {
     required this.colors,
     required this.child,
     this.fill = false,
+    this.padding,
   });
 
   final AppPalette colors;
   final Widget child;
   final bool fill;
+  final EdgeInsetsGeometry? padding;
 
   @override
   Widget build(BuildContext context) {
@@ -409,11 +452,108 @@ class _Panel extends StatelessWidget {
         border: Border.all(color: colors.border),
       ),
       child: Padding(
-        padding: fill
-            ? const EdgeInsets.all(3)
-            : const EdgeInsets.fromLTRB(2, 3, 2, 3),
+        padding: padding ??
+            (fill
+                ? const EdgeInsets.fromLTRB(10, 10, 10, 8)
+                : const EdgeInsets.all(8)),
         child: fill ? SizedBox.expand(child: child) : child,
       ),
+    );
+  }
+}
+
+class _CategoriesHeader extends StatelessWidget {
+  const _CategoriesHeader({required this.colors});
+
+  final AppPalette colors;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Text(
+          'CATEGORIES',
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.4,
+            color: colors.textSecondary,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            'Grey left · red over',
+            textAlign: TextAlign.right,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 9, color: colors.textMuted),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SpendingHeader extends StatelessWidget {
+  const _SpendingHeader({required this.colors});
+
+  final AppPalette colors;
+
+  static Color _levelColor(AppPalette colors, int level) {
+    return switch (level) {
+      1 => const Color(0x8C34D399),
+      2 => const Color(0x99FACC15),
+      3 => const Color(0xBFF97316),
+      _ => const Color(0xFFEF4444),
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Text(
+          'SPENDING',
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.4,
+            color: colors.textSecondary,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Low',
+                  style: TextStyle(fontSize: 9, color: colors.textMuted),
+                ),
+                const SizedBox(width: 4),
+                for (final level in [1, 2, 3, 4])
+                  Container(
+                    width: 9,
+                    height: 9,
+                    margin: const EdgeInsets.only(right: 3),
+                    decoration: BoxDecoration(
+                      color: _levelColor(colors, level),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                Text(
+                  'High',
+                  style: TextStyle(fontSize: 9, color: colors.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -445,120 +585,99 @@ class _CategoriesChart extends StatelessWidget {
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'CATEGORIES',
-          style: TextStyle(
-            fontSize: 9,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.4,
-            color: colors.textSecondary,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Expanded(
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: categories.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 6),
-            itemBuilder: (context, i) {
-              final c = categories[i];
-              final h =
-                  maxLimit <= 0 ? 0.0 : (c.limit / maxLimit).clamp(0.14, 1.0);
-              final over = c.spent > c.limit;
-              final left = (c.limit - c.spent).clamp(0.0, c.limit);
-              final topLabel = over
-                  ? '+${((c.spent - c.limit) / 1000).toStringAsFixed(1)}k'
-                  : left >= 1000
-                      ? '${(left / 1000).toStringAsFixed(1)}k'
-                      : left.round().toString();
-              final barColor = categoryColorFromHex(c.colorHex);
+    return ListView.separated(
+      scrollDirection: Axis.horizontal,
+      itemCount: categories.length,
+      separatorBuilder: (_, _) => const SizedBox(width: 6),
+      itemBuilder: (context, i) {
+        final c = categories[i];
+        final h =
+            maxLimit <= 0 ? 0.0 : (c.limit / maxLimit).clamp(0.14, 1.0);
+        final over = c.spent > c.limit;
+        final left = (c.limit - c.spent).clamp(0.0, c.limit);
+        final topLabel = over
+            ? '+${((c.spent - c.limit) / 1000).toStringAsFixed(1)}k'
+            : left >= 1000
+                ? '${(left / 1000).toStringAsFixed(1)}k'
+                : left.round().toString();
+        final barColor = categoryColorFromHex(c.colorHex);
 
-              return SizedBox(
-                width: 34,
-                child: LayoutBuilder(
-                  builder: (context, box) {
-                    final barMax = (box.maxHeight - 28).clamp(10.0, 80.0);
-                    final barH = (barMax * h).clamp(10.0, barMax);
-                    final spentH = barH *
-                        (over ? 1.0 : (c.limit <= 0
-                            ? 0.0
-                            : (c.spent / c.limit).clamp(0.0, 1.0)));
-                    return FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.bottomCenter,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            topLabel,
-                            maxLines: 1,
-                            style: TextStyle(
-                              fontSize: 8,
-                              fontWeight: FontWeight.w600,
-                              color: over ? colors.error : colors.textMuted,
+        return SizedBox(
+          width: 40,
+          child: LayoutBuilder(
+            builder: (context, box) {
+              final barMax = (box.maxHeight - 28).clamp(24.0, 200.0);
+              final barH = (barMax * h).clamp(16.0, barMax);
+              final spentH = barH *
+                  (over
+                      ? 1.0
+                      : (c.limit <= 0
+                          ? 0.0
+                          : (c.spent / c.limit).clamp(0.0, 1.0)));
+              return FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.bottomCenter,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      topLabel,
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: 8,
+                        fontWeight: FontWeight.w600,
+                        color: over ? colors.error : colors.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    SizedBox(
+                      width: 22,
+                      height: barH,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(5),
+                        child: Stack(
+                          alignment: Alignment.bottomCenter,
+                          children: [
+                            ColoredBox(
+                              color: remain,
+                              child: const SizedBox.expand(),
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          SizedBox(
-                            width: 18,
-                            height: barH,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(5),
-                              child: Stack(
-                                alignment: Alignment.bottomCenter,
-                                children: [
-                                  ColoredBox(
-                                    color: remain,
-                                    child: const SizedBox.expand(),
-                                  ),
-                                  Align(
-                                    alignment: Alignment.bottomCenter,
-                                    child: ColoredBox(
-                                      color: over ? colors.error : barColor,
-                                      child:
-                                          SizedBox(width: 18, height: spentH),
-                                    ),
-                                  ),
-                                ],
+                            Align(
+                              alignment: Alignment.bottomCenter,
+                              child: ColoredBox(
+                                color: over ? colors.error : barColor,
+                                child: SizedBox(width: 22, height: spentH),
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            c.label.length > 6
-                                ? c.label.substring(0, 6)
-                                : c.label,
-                            maxLines: 1,
-                            style: TextStyle(
-                              fontSize: 8,
-                              fontWeight: FontWeight.w500,
-                              color: colors.textSecondary,
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    );
-                  },
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      c.label.length > 6
+                          ? c.label.substring(0, 6)
+                          : c.label,
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: 8,
+                        fontWeight: FontWeight.w500,
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ],
                 ),
               );
             },
           ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          'Grey left · red over',
-          style: TextStyle(fontSize: 9, color: colors.textMuted),
-        ),
-      ],
+        );
+      },
     );
   }
 }
 
-class _SpendingHeat extends StatelessWidget {
-  const _SpendingHeat({
+class _SpendingHeatGrid extends StatelessWidget {
+  const _SpendingHeatGrid({
     required this.weekdays,
     required this.cells,
     required this.colors,
@@ -568,9 +687,10 @@ class _SpendingHeat extends StatelessWidget {
   final List<int> cells;
   final AppPalette colors;
 
-  static const _gap = 1.5;
+  static const _gap = 3.0;
   static const _cols = 7;
   static const _rows = 6;
+  static const _weekdayH = 14.0;
 
   Color _levelColor(int level) {
     return switch (level) {
@@ -583,33 +703,6 @@ class _SpendingHeat extends StatelessWidget {
     };
   }
 
-  Widget _legend() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          'Low',
-          style: TextStyle(fontSize: 8, color: colors.textMuted),
-        ),
-        const SizedBox(width: 3),
-        for (final level in [1, 2, 3, 4])
-          Container(
-            width: 7,
-            height: 7,
-            margin: const EdgeInsets.only(right: 2),
-            decoration: BoxDecoration(
-              color: _levelColor(level),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-        Text(
-          'High',
-          style: TextStyle(fontSize: 8, color: colors.textMuted),
-        ),
-      ],
-    );
-  }
-
   Widget _cell(double size, int level) {
     if (level < 0) return SizedBox(width: size, height: size);
     return Container(
@@ -617,7 +710,7 @@ class _SpendingHeat extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         color: _levelColor(level),
-        borderRadius: BorderRadius.circular(2.5),
+        borderRadius: BorderRadius.circular(3),
         border: level == 0
             ? Border.all(color: colors.border.withValues(alpha: 0.6))
             : null,
@@ -627,98 +720,65 @@ class _SpendingHeat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Text(
-              'SPENDING',
-              style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.4,
-                color: colors.textSecondary,
-              ),
-            ),
-            const SizedBox(width: 4),
-            Expanded(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerRight,
-                child: _legend(),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 3),
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              const weekdayH = 9.0;
-              final byWidth =
-                  (constraints.maxWidth - (_cols - 1) * _gap) / _cols;
-              final byHeight = (constraints.maxHeight -
-                      weekdayH -
-                      (_rows - 1) * _gap) /
-                  _rows;
-              final size =
-                  (byWidth < byHeight ? byWidth : byHeight).clamp(1.0, 48.0);
-              final gridW = _cols * size + (_cols - 1) * _gap;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Fill the container width with equal squares (no L/R empty band).
+        final size =
+            ((constraints.maxWidth - (_cols - 1) * _gap) / _cols).clamp(
+          8.0,
+          double.infinity,
+        );
+        final gridH = _weekdayH + _rows * size + (_rows - 1) * _gap;
 
-              return Align(
-                alignment: Alignment.center,
-                child: SizedBox(
-                  width: gridW,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
+        return SizedBox(
+          width: double.infinity,
+          height: gridH,
+          child: Column(
+            children: [
+              SizedBox(
+                height: _weekdayH - 2,
+                child: Row(
+                  children: [
+                    for (var i = 0; i < weekdays.length; i++) ...[
+                      if (i > 0) const SizedBox(width: _gap),
                       SizedBox(
-                        height: weekdayH - 1,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            for (final d in weekdays)
-                              SizedBox(
-                                width: size,
-                                child: Text(
-                                  d,
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 7,
-                                    fontWeight: FontWeight.w500,
-                                    height: 1,
-                                    color: colors.textMuted,
-                                  ),
-                                ),
-                              ),
-                          ],
+                        width: size,
+                        child: Text(
+                          weekdays[i],
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w500,
+                            height: 1,
+                            color: colors.textMuted,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 1),
-                      for (var r = 0; r < _rows; r++) ...[
-                        if (r > 0) const SizedBox(height: _gap),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            for (var c = 0; c < _cols; c++)
-                              _cell(
-                                size,
-                                r * _cols + c < cells.length
-                                    ? cells[r * _cols + c]
-                                    : -1,
-                              ),
-                          ],
-                        ),
-                      ],
                     ],
-                  ),
+                  ],
                 ),
-              );
-            },
+              ),
+              const SizedBox(height: 2),
+              for (var r = 0; r < _rows; r++) ...[
+                if (r > 0) const SizedBox(height: _gap),
+                Row(
+                  children: [
+                    for (var c = 0; c < _cols; c++) ...[
+                      if (c > 0) const SizedBox(width: _gap),
+                      _cell(
+                        size,
+                        r * _cols + c < cells.length
+                            ? cells[r * _cols + c]
+                            : -1,
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ],
           ),
-        ),
-      ],
+        );
+      },
     );
   }
 }

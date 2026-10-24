@@ -13,7 +13,7 @@ import '../../../budgets/domain/budget_week.dart';
 import '../../../settings/data/app_settings_store.dart';
 import '../../../transactions/data/transaction_store.dart';
 
-enum _BalanceMode { monthly, weekly }
+enum _BalanceMode { weekly, monthly }
 
 class BudgetBalanceCard extends StatefulWidget {
   const BudgetBalanceCard({super.key});
@@ -148,22 +148,24 @@ class _BudgetBalanceCardState extends State<BudgetBalanceCard> {
                   ],
                 ),
                 const SizedBox(height: 10),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: colors.surfaceHover,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: colors.border),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(2),
-                    child: Row(
-                      children: [
-                        for (final mode in _BalanceMode.values)
-                          Expanded(
-                            child: _ModeChip(
-                              label: mode == _BalanceMode.monthly
-                                  ? 'Monthly'
-                                  : 'Weekly',
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: colors.surfaceHover,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: colors.border),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(2),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final mode in _BalanceMode.values)
+                            _ModeChip(
+                              label: mode == _BalanceMode.weekly
+                                  ? 'Weekly'
+                                  : 'Monthly',
                               active: _mode == mode,
                               colors: colors,
                               onTap: () {
@@ -172,8 +174,8 @@ class _BudgetBalanceCardState extends State<BudgetBalanceCard> {
                                 setState(() => _mode = mode);
                               },
                             ),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -233,7 +235,7 @@ class _ModeChip extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(10),

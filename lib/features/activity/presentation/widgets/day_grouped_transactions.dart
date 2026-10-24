@@ -14,7 +14,7 @@ import '../../domain/activity_logic.dart';
 class DayGroupedTransactions extends StatelessWidget {
   const DayGroupedTransactions({
     super.key,
-    required this.transactions,
+    required this.groups,
     this.emptyMessage = 'No transactions yet.',
     this.selectionMode = false,
     this.selectedIds = const {},
@@ -22,7 +22,7 @@ class DayGroupedTransactions extends StatelessWidget {
     this.onEnterSelection,
   });
 
-  final List<MoneyTransaction> transactions;
+  final List<DayGroup> groups;
   final String emptyMessage;
   final bool selectionMode;
   final Set<String> selectedIds;
@@ -32,7 +32,6 @@ class DayGroupedTransactions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
-    final groups = groupTransactionsByDay(transactions);
     if (groups.isEmpty) {
       return DecoratedBox(
         decoration: BoxDecoration(
@@ -51,90 +50,117 @@ class DayGroupedTransactions extends StatelessWidget {
       );
     }
 
+    return Column(
+      children: [
+        for (final group in groups) ...[
+          ActivityDayGroupCard(
+            group: group,
+            selectionMode: selectionMode,
+            selectedIds: selectedIds,
+            onToggleSelect: onToggleSelect,
+            onEnterSelection: onEnterSelection,
+          ),
+          const SizedBox(height: 12),
+        ],
+      ],
+    );
+  }
+}
+
+class ActivityDayGroupCard extends StatelessWidget {
+  const ActivityDayGroupCard({
+    super.key,
+    required this.group,
+    this.selectionMode = false,
+    this.selectedIds = const {},
+    this.onToggleSelect,
+    this.onEnterSelection,
+  });
+
+  final DayGroup group;
+  final bool selectionMode;
+  final Set<String> selectedIds;
+  final ValueChanged<String>? onToggleSelect;
+  final ValueChanged<String>? onEnterSelection;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return ListenableBuilder(
       listenable: CurrencyController.instance,
       builder: (context, _) {
         final format = CurrencyController.instance.format;
-        return Column(
-          children: [
-            for (final group in groups) ...[
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: colors.surfaceElevated,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: colors.border),
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: colors.surfaceElevated,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: colors.border),
+          ),
+          child: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
                 ),
-                child: Column(
+                decoration: BoxDecoration(
+                  color: colors.surfaceHover.withValues(alpha: 0.8),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(15),
+                  ),
+                  border: Border(bottom: BorderSide(color: colors.border)),
+                ),
+                child: Row(
                   children: [
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colors.surfaceHover.withValues(alpha: 0.8),
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(15),
+                    Expanded(
+                      child: Text(
+                        group.heading,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: colors.textPrimary,
                         ),
-                        border: Border(
-                          bottom: BorderSide(color: colors.border),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              group.heading,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: colors.textPrimary,
-                              ),
-                            ),
-                          ),
-                          if (group.credit > 0)
-                            Text(
-                              'Income ${format(group.credit)}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: colors.success,
-                              ),
-                            ),
-                          if (group.credit > 0 && group.debit > 0)
-                            const SizedBox(width: 8),
-                          if (group.debit > 0)
-                            Text(
-                              'Spent ${format(group.debit)}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: colors.error,
-                              ),
-                            ),
-                        ],
                       ),
                     ),
-                    for (var i = 0; i < group.items.length; i++) ...[
-                      if (i > 0) Divider(height: 1, color: colors.border),
-                      _TxRow(
-                        key: ValueKey(group.items[i].id),
-                        tx: group.items[i],
-                        colors: colors,
-                        format: format,
-                        selectionMode: selectionMode,
-                        selected: selectedIds.contains(group.items[i].id),
-                        onToggle: onToggleSelect,
-                        onEnterSelection: onEnterSelection,
+                    if (group.credit > 0)
+                      Text(
+                        'Income ${format(group.credit)}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: colors.success,
+                        ),
                       ),
-                    ],
+                    if (group.credit > 0 && group.debit > 0)
+                      const SizedBox(width: 8),
+                    if (group.debit > 0)
+                      Text(
+                        'Spent ${format(group.debit)}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: colors.error,
+                        ),
+                      ),
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
+              for (var i = 0; i < group.items.length; i++) ...[
+                if (i > 0) Divider(height: 1, color: colors.border),
+                _TxRow(
+                  key: ValueKey(group.items[i].id),
+                  tx: group.items[i],
+                  colors: colors,
+                  format: format,
+                  selectionMode: selectionMode,
+                  selected: selectedIds.contains(group.items[i].id),
+                  onToggle: onToggleSelect,
+                  onEnterSelection: onEnterSelection,
+                ),
+              ],
             ],
-          ],
+          ),
         );
       },
     );
@@ -184,9 +210,7 @@ class _TxRow extends StatelessWidget {
             children: [
               if (selectionMode) ...[
                 Icon(
-                  selected
-                      ? Icons.check_circle_rounded
-                      : Icons.circle_outlined,
+                  selected ? Icons.check_circle_rounded : Icons.circle_outlined,
                   size: 20,
                   color: selected ? colors.accent : colors.textMuted,
                 ),
@@ -209,16 +233,19 @@ class _TxRow extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       [
-                        tx.category,
-                        if (tx.paymentMode != null)
-                          paymentModeLabel(tx.paymentMode),
-                        if (tx.accountId != null)
-                          AccountStore.instance.byId(tx.accountId)?.name,
-                        if (tx.tags.isNotEmpty)
-                          tx.tags
-                              .map((t) => t.startsWith('#') ? t : '#$t')
-                              .join(' '),
-                      ].whereType<String>().where((s) => s.isNotEmpty).join(' · '),
+                            tx.category,
+                            if (tx.paymentMode != null)
+                              paymentModeLabel(tx.paymentMode),
+                            if (tx.accountId != null)
+                              AccountStore.instance.byId(tx.accountId)?.name,
+                            if (tx.tags.isNotEmpty)
+                              tx.tags
+                                  .map((t) => t.startsWith('#') ? t : '#$t')
+                                  .join(' '),
+                          ]
+                          .whereType<String>()
+                          .where((s) => s.isNotEmpty)
+                          .join(' · '),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(fontSize: 11, color: colors.textMuted),

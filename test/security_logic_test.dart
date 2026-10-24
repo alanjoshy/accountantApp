@@ -1,10 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:accountant/app/bootstrap.dart';
 import 'package:accountant/core/storage/local_storage.dart';
 import 'package:accountant/features/auth/data/app_lock_store.dart';
 import 'package:accountant/features/auth/domain/app_session.dart';
+import 'package:accountant/features/auth/domain/biometric_auth.dart';
 import 'package:accountant/features/auth/domain/sensitive_access_session.dart';
 import 'package:accountant/features/home/domain/remember_tips.dart';
 
@@ -17,6 +19,7 @@ void main() {
     await bootstrap();
     AppSession.instance.reset();
     SensitiveAccessSession.instance.reset();
+    BiometricAuth.instance.debugClearOverride();
   });
 
   test('app lock prefs and session unlock', () async {
@@ -70,6 +73,73 @@ void main() {
     await lock.markPinUnlock(old);
     expect(lock.requiresWeeklyPin(), isFalse);
     expect(lock.canUseBiometricUnlock, isTrue);
+  });
+
+  test('biometric enable is a no-op without PIN', () async {
+    final lock = AppLockStore.instance;
+    await lock.setBiometricEnabled(true);
+    expect(lock.biometricEnabled, isFalse);
+    expect(lock.canUseBiometricUnlock, isFalse);
+  });
+
+  test('maps local_auth exceptions to PIN fallback results', () {
+    expect(
+      BiometricAuth.mapException(
+        const LocalAuthException(code: LocalAuthExceptionCode.userCanceled),
+      ).isCanceled,
+      isTrue,
+    );
+    expect(
+      BiometricAuth.mapException(
+        const LocalAuthException(
+          code: LocalAuthExceptionCode.userRequestedFallback,
+        ),
+      ).isCanceled,
+      isTrue,
+    );
+    expect(
+      BiometricAuth.mapException(
+        const LocalAuthException(
+          code: LocalAuthExceptionCode.noBiometricHardware,
+        ),
+      ).status,
+      BiometricAuthStatus.unavailable,
+    );
+    expect(
+      BiometricAuth.mapException(
+        const LocalAuthException(code: LocalAuthExceptionCode.noBiometricsEnrolled),
+      ).userMessage,
+      'Biometrics unavailable. Enter your PIN.',
+    );
+    expect(
+      BiometricAuth.mapException(
+        const LocalAuthException(code: LocalAuthExceptionCode.biometricLockout),
+      ).status,
+      BiometricAuthStatus.lockout,
+    );
+    expect(
+      BiometricAuth.mapException(
+        const LocalAuthException(code: LocalAuthExceptionCode.unknownError),
+      ).status,
+      BiometricAuthStatus.failed,
+    );
+  });
+
+  test('authenticate override success and cancel', () async {
+    BiometricAuth.instance.debugOverride(
+      available: () async => true,
+      authenticate: ({required reason}) async => true,
+    );
+    final ok = await BiometricAuth.instance.authenticate(reason: 'test');
+    expect(ok.success, isTrue);
+
+    BiometricAuth.instance.debugOverride(
+      available: () async => true,
+      authenticate: ({required reason}) async => false,
+    );
+    final canceled = await BiometricAuth.instance.authenticate(reason: 'test');
+    expect(canceled.isCanceled, isTrue);
+    expect(canceled.userMessage, isNull);
   });
 
   test('shouldRelock respects grace and settings', () async {

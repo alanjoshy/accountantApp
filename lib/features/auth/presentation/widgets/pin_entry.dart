@@ -57,6 +57,17 @@ class _PinEntryState extends State<PinEntry> {
         selection: TextSelection.collapsed(offset: widget.value.length),
       );
     }
+    final becameEnabled = oldWidget.disabled && !widget.disabled;
+    final becameAutoFocus = !oldWidget.autoFocus && widget.autoFocus;
+    if (widget.disabled && _focusNode.hasFocus) {
+      _focusNode.unfocus();
+    } else if (!widget.disabled &&
+        widget.autoFocus &&
+        (becameEnabled || becameAutoFocus)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !widget.disabled) _focusNode.requestFocus();
+      });
+    }
   }
 
   @override

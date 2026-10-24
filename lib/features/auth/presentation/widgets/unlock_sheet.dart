@@ -34,7 +34,7 @@ Future<bool> ensureSensitiveAccess(
       reason: 'Unlock to show account balances',
     );
     AppSession.instance.setAuthenticating(false);
-    if (bio) {
+    if (bio.success) {
       SensitiveAccessSession.instance.reveal();
       return true;
     }

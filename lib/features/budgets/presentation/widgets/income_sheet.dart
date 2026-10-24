@@ -124,6 +124,27 @@ class _IncomeSheetState extends State<IncomeSheet> {
               style: TextStyle(fontSize: 12, color: colors.textMuted),
             ),
             const SizedBox(height: 14),
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 6),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.payments_outlined,
+                    size: 15,
+                    color: colors.textMuted,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Amount',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: colors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
             DecoratedBox(
               decoration: BoxDecoration(
                 color: colors.surfaceHover,
@@ -134,6 +155,12 @@ class _IncomeSheetState extends State<IncomeSheet> {
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 child: Row(
                   children: [
+                    Icon(
+                      Icons.account_balance_wallet_outlined,
+                      size: 22,
+                      color: colors.textMuted,
+                    ),
+                    const SizedBox(width: 10),
                     Text(
                       symbol,
                       style: TextStyle(

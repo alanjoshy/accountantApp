@@ -205,6 +205,12 @@ class _AllocateBudgetSheetState extends State<AllocateBudgetSheet> {
                     padding: const EdgeInsets.symmetric(horizontal: 14),
                     child: Row(
                       children: [
+                        Icon(
+                          Icons.payments_outlined,
+                          size: 18,
+                          color: colors.textMuted,
+                        ),
+                        const SizedBox(width: 10),
                         Text(
                           symbol,
                           style: TextStyle(

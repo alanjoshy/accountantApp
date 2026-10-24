@@ -64,15 +64,20 @@ IconData categoryIconData(String key) {
 String defaultIconForCategory(String category) {
   final key = category.trim().toLowerCase();
   return switch (key) {
-    'food' || 'restaurant' => 'restaurant',
+    'food' || 'restaurant' || 'dining' => 'restaurant',
     'grocery' || 'groceries' => 'cart',
-    'transport' || 'travel' => 'directions_car',
-    'bills' || 'utilities' => 'bolt',
-    'shopping' => 'shopping_bag',
-    'entertainment' || 'fun' => 'movie',
-    'health' => 'favorite',
-    'rent' || 'home' => 'home',
-    'work' || 'salary' => 'work',
+    'transport' || 'travel' || 'fuel' || 'petrol' => 'directions_car',
+    'bills' || 'utilities' || 'electricity' => 'bolt',
+    'shopping' || 'clothes' || 'clothing' => 'shopping_bag',
+    'entertainment' || 'fun' || 'movies' => 'movie',
+    'health' || 'medical' || 'fitness' || 'gym' => 'favorite',
+    'rent' || 'home' || 'housing' => 'home',
+    'work' || 'salary' || 'office' => 'work',
+    'education' || 'school' || 'tuition' => 'school',
+    'pets' || 'pet' => 'pets',
+    'coffee' || 'cafe' => 'coffee',
+    'phone' || 'mobile' || 'internet' => 'phone',
+    'flight' || 'vacation' || 'holiday' => 'flight',
     _ => 'more',
   };
 }

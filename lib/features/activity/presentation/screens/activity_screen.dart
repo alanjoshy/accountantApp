@@ -18,7 +18,7 @@ import '../../../transactions/data/transaction_store.dart';
 import '../../domain/activity_logic.dart';
 import '../../domain/cycle.dart';
 import '../widgets/category_spend_pie.dart';
-import '../widgets/daily_spend_line_chart.dart';
+import '../widgets/daily_spend_bar_chart.dart';
 import '../widgets/day_grouped_transactions.dart';
 
 enum _ActivityTab { recent, categories, tags }
@@ -43,11 +43,24 @@ class _ActivityScreenState extends State<ActivityScreen> {
   bool _selectionMode = false;
   final _selectedIds = <String>{};
   bool _deleting = false;
+  int _visibleLimit = kActivityPageSize;
+  int _pageTotal = 0;
+  bool _loadQueued = false;
 
   final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
 
   @override
   void dispose() {
+    _scrollController
+      ..removeListener(_onScroll)
+      ..dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -63,7 +76,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
   void _clearFilters() {
     HapticFeedback.selectionClick();
-    setState(() {
+    _setFilters(() {
       _type = ActivityTypeFilter.all;
       _period = ActivityPeriodFilter.all;
       _search = '';
@@ -73,6 +86,54 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _accountFilter = null;
       _paymentModeFilter = null;
     });
+  }
+
+  void _setFilters(VoidCallback apply) {
+    setState(() {
+      apply();
+      _visibleLimit = kActivityPageSize;
+    });
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(0);
+    }
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    if (_tab != _ActivityTab.recent) return;
+    if (_scrollController.position.extentAfter < 480) {
+      _tryLoadMore(_pageTotal);
+    }
+  }
+
+  void _tryLoadMore(int totalCount) {
+    if (_visibleLimit >= totalCount || _loadQueued) return;
+    _loadQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadQueued = false;
+      if (!mounted || _visibleLimit >= totalCount) return;
+      setState(() => _visibleLimit += kActivityPageSize);
+    });
+  }
+
+  void _fillViewportIfNeeded(bool hasMore, int totalCount) {
+    if (!hasMore) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      if (_scrollController.position.maxScrollExtent <= 0) {
+        _tryLoadMore(totalCount);
+      }
+    });
+  }
+
+  Widget _pageWrap(Widget child) {
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: child,
+      ),
+    );
   }
 
   void _exitSelection() {
@@ -99,14 +160,12 @@ class _ActivityScreenState extends State<ActivityScreen> {
     final ok = await AppToast.confirm(
       context,
       title: 'Delete $n transaction${n == 1 ? '' : 's'}?',
-      message:
-          'This removes them from Activity and reverses linked account balances. It cannot be undone.',
+      message: 'This removes them from Activity and reverses linked account balances. It cannot be undone.',
     );
     if (ok != true || !mounted) return;
     setState(() => _deleting = true);
     try {
-      final removed =
-          await TransactionStore.instance.deleteMany(_selectedIds);
+      final removed = await TransactionStore.instance.deleteMany(_selectedIds);
       if (!mounted) return;
       _exitSelection();
       AppToast.warning(
@@ -151,16 +210,13 @@ class _ActivityScreenState extends State<ActivityScreen> {
         final categoryRows = buildCategoryBreakdown(filtered);
         final expenseRows = buildExpenseCategoryBreakdown(filtered);
         final tagRows = buildTagBreakdown(filtered);
-        final dailySpend = buildDailySpending(
-          filtered,
-          _period,
-          cycleStartDay: cycleDay,
-        );
+        final dailySpend = _tab == _ActivityTab.recent
+            ? buildDailySpending(filtered, _period, cycleStartDay: cycleDay)
+            : const <DailySpendPoint>[];
         final categories = {
           for (final t in all)
             if (t.type != TransactionType.transfer) t.category,
-        }.toList()
-          ..sort();
+        }.toList()..sort();
         final availableTags = AppSettingsStore.instance.tags;
         final cycleBounds = getCurrentCycleDayBounds(cycleDay);
         final cycleBudgets = listedBudgetsForWindow(
@@ -174,339 +230,375 @@ class _ActivityScreenState extends State<ActivityScreen> {
         );
         final days = cycleDayCount(cycleDay);
         final dailyAllowance = pool > 0 && days > 0 ? pool / days : 0.0;
+        final groups = _tab == _ActivityTab.recent
+            ? groupTransactionsByDay(filtered)
+            : const <DayGroup>[];
+        final page = paginateDayGroups(groups, _visibleLimit);
+        _pageTotal = page.totalCount;
+        _fillViewportIfNeeded(page.hasMore, page.totalCount);
 
-        return ListView(
-          padding: EdgeInsets.fromLTRB(
-            AppSpacing.md,
-            AppSpacing.md,
-            AppSpacing.md,
-            AppSpacing.lg + bottom,
-          ),
-          children: [
-            Align(
-              alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Activity',
-                                style: TextStyle(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.w700,
-                                  color: colors.textPrimary,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                _selectionMode
-                                    ? '${_selectedIds.length} selected'
-                                    : 'Recent activity, categories, and tags',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: colors.textMuted,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (_tab == _ActivityTab.recent)
-                          IconButton(
-                            onPressed: () {
-                              if (_selectionMode) {
-                                _exitSelection();
-                              } else {
-                                _enterSelection();
-                              }
-                            },
-                            icon: Icon(
-                              _selectionMode
-                                  ? Icons.close_rounded
-                                  : Icons.check_box_outlined,
-                              color: colors.textSecondary,
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    _Tabs(
-                      tab: _tab,
-                      colors: colors,
-                      onChanged: (t) {
-                        HapticFeedback.mediumImpact();
-                        setState(() {
-                          _tab = t;
-                          if (t != _ActivityTab.recent) _exitSelection();
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _searchController,
-                            onChanged: (v) => setState(() => _search = v),
-                            decoration: InputDecoration(
-                              hintText: 'Search title, category, tag…',
-                              prefixIcon: Icon(Icons.search_rounded,
-                                  color: colors.textMuted, size: 20),
-                              filled: true,
-                              fillColor: colors.surfaceHover,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 12,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                                borderSide: BorderSide(color: colors.border),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                                borderSide: BorderSide(color: colors.border),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            IconButton.filledTonal(
-                              onPressed: () {
-                                HapticFeedback.selectionClick();
-                                setState(() => _filtersOpen = !_filtersOpen);
-                              },
-                              style: IconButton.styleFrom(
-                                backgroundColor: _filtersOpen ||
-                                        _activeFilterCount > 0
-                                    ? colors.accentMuted
-                                    : colors.surfaceHover,
-                              ),
-                              icon: Icon(
-                                Icons.tune_rounded,
-                                color: _filtersOpen || _activeFilterCount > 0
-                                    ? colors.accent
-                                    : colors.textSecondary,
-                              ),
-                            ),
-                            if (_activeFilterCount > 0)
-                              Positioned(
-                                right: 2,
-                                top: 2,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 5,
-                                    vertical: 1,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: colors.accent,
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: Text(
-                                    '$_activeFilterCount',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    if (_filtersOpen) ...[
-                      const SizedBox(height: 12),
-                      _FiltersPanel(
-                        colors: colors,
-                        type: _type,
-                        period: _period,
-                        categoryFilter: _categoryFilter,
-                        tagFilter: _tagFilter,
-                        accountFilter: _accountFilter,
-                        paymentModeFilter: _paymentModeFilter,
-                        categories: categories,
-                        tags: availableTags,
-                        accounts: AccountStore.instance.accounts,
-                        activeCount: _activeFilterCount,
-                        onClear: _clearFilters,
-                        onType: (v) => setState(() => _type = v),
-                        onPeriod: (v) => setState(() => _period = v),
-                        onCategory: (v) => setState(() => _categoryFilter = v),
-                        onTag: (v) => setState(() => _tagFilter = v),
-                        onAccount: (v) => setState(() => _accountFilter = v),
-                        onPaymentMode: (v) =>
-                            setState(() => _paymentModeFilter = v),
-                      ),
-                    ],
-                    if (_tab == _ActivityTab.categories) ...[
-                      const SizedBox(height: 12),
-                      CategorySpendPie(
-                        rows: expenseRows,
-                        income: totals.income,
-                        expense: totals.expense,
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    _SummaryRow(
-                      colors: colors,
-                      income: totals.income,
-                      expense: totals.expense,
-                      count: filtered.length,
-                    ),
-                    const SizedBox(height: 12),
-                    if (_tab == _ActivityTab.recent) ...[
+        return CustomScrollView(
+          key: const ValueKey('activity-scroll'),
+          controller: _scrollController,
+          slivers: [
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.md,
+                AppSpacing.md,
+                0,
+              ),
+              sliver: SliverToBoxAdapter(
+                child: _pageWrap(
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
-                            child: CategorySpendPie(
-                              rows: expenseRows,
-                              income: totals.income,
-                              expense: totals.expense,
-                              compact: true,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Activity',
+                                  style: TextStyle(
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.w700,
+                                    color: colors.textPrimary,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  _selectionMode
+                                      ? '${_selectedIds.length} selected'
+                                      : 'Recent activity, categories, and tags',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: colors.textMuted,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: DailySpendLineChart(
-                              points: dailySpend,
-                              dailyAllowance: dailyAllowance,
-                              compact: true,
+                          if (_tab == _ActivityTab.recent)
+                            IconButton(
+                              onPressed: () {
+                                if (_selectionMode) {
+                                  _exitSelection();
+                                } else {
+                                  _enterSelection();
+                                }
+                              },
+                              icon: Icon(
+                                _selectionMode
+                                    ? Icons.close_rounded
+                                    : Icons.check_box_outlined,
+                                color: colors.textSecondary,
+                              ),
                             ),
-                          ),
                         ],
+                      ),
+                      const SizedBox(height: 12),
+                      _Tabs(
+                        tab: _tab,
+                        colors: colors,
+                        onChanged: (t) {
+                          HapticFeedback.mediumImpact();
+                          setState(() {
+                            _tab = t;
+                            if (t != _ActivityTab.recent) {
+                              _selectionMode = false;
+                              _selectedIds.clear();
+                              _visibleLimit = kActivityPageSize;
+                            }
+                          });
+                        },
                       ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
                           Expanded(
-                            child: Text(
-                              'Recent activity',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                color: colors.textPrimary,
+                            child: TextField(
+                              controller: _searchController,
+                              onChanged: (v) => _setFilters(() => _search = v),
+                              decoration: InputDecoration(
+                                hintText: 'Search title, category, tag…',
+                                prefixIcon: Icon(
+                                  Icons.search_rounded,
+                                  color: colors.textMuted,
+                                  size: 20,
+                                ),
+                                filled: true,
+                                fillColor: colors.surfaceHover,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 12,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: BorderSide(color: colors.border),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: BorderSide(color: colors.border),
+                                ),
                               ),
                             ),
                           ),
-                          if (_selectionMode) ...[
-                            TextButton(
-                              onPressed: () {
-                                setState(() {
-                                  _selectedIds
-                                    ..clear()
-                                    ..addAll(filtered.map((t) => t.id));
-                                });
-                              },
-                              child: Text('Select all',
-                                  style: TextStyle(color: colors.accent)),
-                            ),
-                            TextButton(
-                              onPressed: _selectedIds.isEmpty || _deleting
-                                  ? null
-                                  : _deleteSelected,
-                              child: Text(
-                                _deleting ? 'Deleting…' : 'Delete',
-                                style: TextStyle(color: colors.error),
+                          const SizedBox(width: 8),
+                          Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              IconButton.filledTonal(
+                                onPressed: () {
+                                  HapticFeedback.selectionClick();
+                                  setState(() => _filtersOpen = !_filtersOpen);
+                                },
+                                style: IconButton.styleFrom(
+                                  backgroundColor:
+                                      _filtersOpen || _activeFilterCount > 0
+                                      ? colors.accentMuted
+                                      : colors.surfaceHover,
+                                ),
+                                icon: Icon(
+                                  Icons.tune_rounded,
+                                  color: _filtersOpen || _activeFilterCount > 0
+                                      ? colors.accent
+                                      : colors.textSecondary,
+                                ),
                               ),
-                            ),
-                          ],
+                              if (_activeFilterCount > 0)
+                                Positioned(
+                                  right: 2,
+                                  top: 2,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 5,
+                                      vertical: 1,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: colors.accent,
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Text(
+                                      '$_activeFilterCount',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      DayGroupedTransactions(
-                        transactions: filtered,
-                        emptyMessage: _activeFilterCount > 0
-                            ? 'No transactions match these filters.'
-                            : 'No transactions yet. Tap + to add one.',
-                        selectionMode: _selectionMode,
-                        selectedIds: _selectedIds,
-                        onToggleSelect: (id) {
-                          setState(() {
-                            if (_selectedIds.contains(id)) {
-                              _selectedIds.remove(id);
-                            } else {
-                              _selectedIds.add(id);
-                            }
-                          });
-                        },
-                        onEnterSelection: _enterSelection,
-                      ),
-                    ],
-                    if (_tab == _ActivityTab.categories) ...[
-                      Text(
-                        'Category spending',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: colors.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      if (categoryRows.isEmpty)
-                        _EmptyCard(
+                      if (_filtersOpen) ...[
+                        const SizedBox(height: 12),
+                        _FiltersPanel(
                           colors: colors,
-                          text: 'No category data for this filter set.',
-                        )
-                      else
-                        for (final row in categoryRows)
-                          _BreakdownTile(
-                            colors: colors,
-                            row: row,
-                            onTap: () {
-                              HapticFeedback.mediumImpact();
-                              setState(() {
-                                _categoryFilter = row.key;
-                                _tab = _ActivityTab.recent;
-                                _filtersOpen = true;
-                              });
-                            },
-                          ),
-                    ],
-                    if (_tab == _ActivityTab.tags) ...[
-                      Text(
-                        'Tag spending',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: colors.textPrimary,
+                          type: _type,
+                          period: _period,
+                          categoryFilter: _categoryFilter,
+                          tagFilter: _tagFilter,
+                          accountFilter: _accountFilter,
+                          paymentModeFilter: _paymentModeFilter,
+                          categories: categories,
+                          tags: availableTags,
+                          accounts: AccountStore.instance.accounts,
+                          activeCount: _activeFilterCount,
+                          onClear: _clearFilters,
+                          onType: (v) => _setFilters(() => _type = v),
+                          onPeriod: (v) => _setFilters(() => _period = v),
+                          onCategory: (v) =>
+                              _setFilters(() => _categoryFilter = v),
+                          onTag: (v) => _setFilters(() => _tagFilter = v),
+                          onAccount: (v) =>
+                              _setFilters(() => _accountFilter = v),
+                          onPaymentMode: (v) =>
+                              _setFilters(() => _paymentModeFilter = v),
                         ),
+                      ],
+                      if (_tab == _ActivityTab.categories) ...[
+                        const SizedBox(height: 12),
+                        CategorySpendPie(
+                          rows: expenseRows,
+                          income: totals.income,
+                          expense: totals.expense,
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      _SummaryRow(
+                        colors: colors,
+                        income: totals.income,
+                        expense: totals.expense,
+                        count: filtered.length,
                       ),
-                      const SizedBox(height: 8),
-                      if (tagRows.isEmpty)
-                        _EmptyCard(
-                          colors: colors,
-                          text:
-                              'No tag data yet. Add tags in Settings, then tag transactions.',
-                        )
-                      else
-                        for (final row in tagRows)
-                          _BreakdownTile(
-                            colors: colors,
-                            row: row,
-                            mutedBar: row.key == '__none__',
-                            onTap: () {
-                              HapticFeedback.mediumImpact();
-                              setState(() {
-                                _tagFilter = row.key;
-                                _tab = _ActivityTab.recent;
-                                _filtersOpen = true;
-                              });
-                            },
+                      const SizedBox(height: 12),
+                      if (_tab == _ActivityTab.recent) ...[
+                        RepaintBoundary(
+                          child: CategorySpendPie(
+                            rows: expenseRows,
+                            income: totals.income,
+                            expense: totals.expense,
+                            compact: true,
                           ),
+                        ),
+                        const SizedBox(height: 12),
+                        RepaintBoundary(
+                          child: DailySpendBarChart(
+                            points: dailySpend,
+                            dailyAllowance: dailyAllowance,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Recent activity',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: colors.textPrimary,
+                                ),
+                              ),
+                            ),
+                            if (_selectionMode) ...[
+                              TextButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _selectedIds
+                                      ..clear()
+                                      ..addAll(filtered.map((t) => t.id));
+                                  });
+                                },
+                                child: Text(
+                                  'Select all',
+                                  style: TextStyle(color: colors.accent),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: _selectedIds.isEmpty || _deleting
+                                    ? null
+                                    : _deleteSelected,
+                                child: Text(
+                                  _deleting ? 'Deleting…' : 'Delete',
+                                  style: TextStyle(color: colors.error),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        if (page.groups.isEmpty)
+                          DayGroupedTransactions(
+                            groups: const [],
+                            emptyMessage: _activeFilterCount > 0
+                                ? 'No transactions match these filters.'
+                                : 'No transactions yet. Tap + to add one.',
+                          )
+                        else ...[
+                          for (final group in page.groups)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: ActivityDayGroupCard(
+                                group: group,
+                                selectionMode: _selectionMode,
+                                selectedIds: _selectedIds,
+                                onToggleSelect: (id) {
+                                  setState(() {
+                                    if (_selectedIds.contains(id)) {
+                                      _selectedIds.remove(id);
+                                    } else {
+                                      _selectedIds.add(id);
+                                    }
+                                  });
+                                },
+                                onEnterSelection: _enterSelection,
+                              ),
+                            ),
+                          if (page.hasMore)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+      child: Center(
+                                child: Text(
+                                  'Loading more…',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: colors.textMuted,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ],
+                      if (_tab == _ActivityTab.categories) ...[
+                        Text(
+                          'Category spending',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: colors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        if (categoryRows.isEmpty)
+                          _EmptyCard(
+                            colors: colors,
+                            text: 'No category data for this filter set.',
+                          )
+                        else
+                          for (final row in categoryRows)
+                            _BreakdownTile(
+                              colors: colors,
+                              row: row,
+                              onTap: () {
+                                HapticFeedback.mediumImpact();
+                                _setFilters(() {
+                                  _categoryFilter = row.key;
+                                  _tab = _ActivityTab.recent;
+                                  _filtersOpen = true;
+                                });
+                              },
+                            ),
+                      ],
+                      if (_tab == _ActivityTab.tags) ...[
+                        Text(
+                          'Tag spending',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: colors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        if (tagRows.isEmpty)
+                          _EmptyCard(
+                            colors: colors,
+                            text: 'No tag data yet. Add tags in Settings, then tag transactions.',
+                          )
+                        else
+                          for (final row in tagRows)
+                            _BreakdownTile(
+                              colors: colors,
+                              row: row,
+                              mutedBar: row.key == '__none__',
+                              onTap: () {
+                                HapticFeedback.mediumImpact();
+                                _setFilters(() {
+                                  _tagFilter = row.key;
+                                  _tab = _ActivityTab.recent;
+                                  _filtersOpen = true;
+                                });
+                              },
+                            ),
+                      ],
+                      SizedBox(height: AppSpacing.lg + bottom),
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -547,9 +639,11 @@ class _Tabs extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(icon,
-                        size: 14,
-                        color: active ? Colors.white : colors.textMuted),
+                    Icon(
+                      icon,
+                      size: 14,
+                      color: active ? Colors.white : colors.textMuted,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       label,
@@ -655,13 +749,17 @@ class _FiltersPanel extends StatelessWidget {
                 if (activeCount > 0)
                   TextButton(
                     onPressed: onClear,
-                    child: Text('Clear all',
-                        style: TextStyle(color: colors.accent, fontSize: 12)),
+                    child: Text(
+                      'Clear all',
+                      style: TextStyle(color: colors.accent, fontSize: 12),
+                    ),
                   ),
               ],
             ),
-            Text('Type',
-                style: TextStyle(fontSize: 11, color: colors.textMuted)),
+            Text(
+              'Type',
+              style: TextStyle(fontSize: 11, color: colors.textMuted),
+            ),
             const SizedBox(height: 6),
             Row(
               children: [
@@ -674,7 +772,10 @@ class _FiltersPanel extends StatelessWidget {
                     child: Padding(
                       padding: const EdgeInsets.only(right: 4),
                       child: ChoiceChip(
-                        label: Text(label, style: const TextStyle(fontSize: 11)),
+                        label: Text(
+                          label,
+                          style: const TextStyle(fontSize: 11),
+                        ),
                         selected: type == f,
                         onSelected: (_) => onType(f),
                       ),
@@ -683,8 +784,10 @@ class _FiltersPanel extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-            Text('Period',
-                style: TextStyle(fontSize: 11, color: colors.textMuted)),
+            Text(
+              'Period',
+              style: TextStyle(fontSize: 11, color: colors.textMuted),
+            ),
             const SizedBox(height: 6),
             Wrap(
               spacing: 6,
@@ -704,8 +807,10 @@ class _FiltersPanel extends StatelessWidget {
             ),
             if (categories.isNotEmpty) ...[
               const SizedBox(height: 10),
-              Text('Category',
-                  style: TextStyle(fontSize: 11, color: colors.textMuted)),
+              Text(
+                'Category',
+                style: TextStyle(fontSize: 11, color: colors.textMuted),
+              ),
               const SizedBox(height: 6),
               Wrap(
                 spacing: 6,
@@ -728,8 +833,10 @@ class _FiltersPanel extends StatelessWidget {
             ],
             if (tags.isNotEmpty || tagFilter != null) ...[
               const SizedBox(height: 10),
-              Text('Tag',
-                  style: TextStyle(fontSize: 11, color: colors.textMuted)),
+              Text(
+                'Tag',
+                style: TextStyle(fontSize: 11, color: colors.textMuted),
+              ),
               const SizedBox(height: 6),
               Wrap(
                 spacing: 6,
@@ -743,24 +850,24 @@ class _FiltersPanel extends StatelessWidget {
                   ChoiceChip(
                     label: const Text('No tag'),
                     selected: tagFilter == '__none__',
-                    onSelected: (_) => onTag(
-                      tagFilter == '__none__' ? null : '__none__',
-                    ),
+                    onSelected: (_) =>
+                        onTag(tagFilter == '__none__' ? null : '__none__'),
                   ),
                   for (final t in tags)
                     ChoiceChip(
                       label: Text(t.startsWith('#') ? t : '#$t'),
                       selected: tagFilter == t,
-                      onSelected: (_) =>
-                          onTag(tagFilter == t ? null : t),
+                      onSelected: (_) => onTag(tagFilter == t ? null : t),
                     ),
                 ],
               ),
             ],
             if (accounts.isNotEmpty) ...[
               const SizedBox(height: 10),
-              Text('Account',
-                  style: TextStyle(fontSize: 11, color: colors.textMuted)),
+              Text(
+                'Account',
+                style: TextStyle(fontSize: 11, color: colors.textMuted),
+              ),
               const SizedBox(height: 6),
               Wrap(
                 spacing: 6,
@@ -775,16 +882,17 @@ class _FiltersPanel extends StatelessWidget {
                     ChoiceChip(
                       label: Text(a.name),
                       selected: accountFilter == a.id,
-                      onSelected: (_) => onAccount(
-                        accountFilter == a.id ? null : a.id,
-                      ),
+                      onSelected: (_) =>
+                          onAccount(accountFilter == a.id ? null : a.id),
                     ),
                 ],
               ),
             ],
             const SizedBox(height: 10),
-            Text('Payment mode',
-                style: TextStyle(fontSize: 11, color: colors.textMuted)),
+            Text(
+              'Payment mode',
+              style: TextStyle(fontSize: 11, color: colors.textMuted),
+            ),
             const SizedBox(height: 6),
             Wrap(
               spacing: 6,
