@@ -438,20 +438,30 @@ class _ActivityScreenState extends State<ActivityScreen> {
                       ),
                       const SizedBox(height: 12),
                       if (_tab == _ActivityTab.recent) ...[
-                        RepaintBoundary(
-                          child: CategorySpendPie(
-                            rows: expenseRows,
-                            income: totals.income,
-                            expense: totals.expense,
-                            compact: true,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        RepaintBoundary(
-                          child: DailySpendBarChart(
-                            points: dailySpend,
-                            dailyAllowance: dailyAllowance,
-                          ),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: RepaintBoundary(
+                                child: CategorySpendPie(
+                                  rows: expenseRows,
+                                  income: totals.income,
+                                  expense: totals.expense,
+                                  compact: true,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: RepaintBoundary(
+                                child: DailySpendBarChart(
+                                  points: dailySpend,
+                                  dailyAllowance: dailyAllowance,
+                                  compact: true,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 12),
                         Row(

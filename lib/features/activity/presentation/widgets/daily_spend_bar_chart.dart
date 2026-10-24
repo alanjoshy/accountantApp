@@ -1,5 +1,7 @@
 // Daily spend bars — same layout language as Home month-pulse categories.
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../../../app/currency/currency_controller.dart';
@@ -39,8 +41,10 @@ class DailySpendBarChart extends StatelessWidget {
     final remain = Theme.of(context).brightness == Brightness.dark
         ? const Color(0xFF3F3F46)
         : const Color(0xFFD1D5DB);
-    // Tall track so bars read larger; card chrome stays the same.
-    final panelH = compact ? 200.0 : 228.0;
+    // Compact fits beside CategorySpendPie; full height for standalone.
+    final panelH = compact ? 108.0 : 228.0;
+    final barWidth = compact ? 28.0 : 40.0;
+    final stemW = compact ? 16.0 : 22.0;
     final hint = dailyAllowance > 0
         ? 'Grey left · red over'
         : 'Low green · high red';
@@ -48,18 +52,21 @@ class DailySpendBarChart extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colors.surfaceElevated,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(compact ? 14 : 16),
         border: Border.all(color: colors.border),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(10),
+        padding: EdgeInsets.all(compact ? 8 : 10),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
               'Daily spending',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 13,
+                fontSize: compact ? 12 : 13,
                 fontWeight: FontWeight.w600,
                 color: colors.textPrimary,
               ),
@@ -68,43 +75,48 @@ class DailySpendBarChart extends StatelessWidget {
               dailyAllowance > 0
                   ? 'Allowance ${format(dailyAllowance)}/day'
                   : 'Expenses by day',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(fontSize: 10, color: colors.textMuted),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 6),
             Row(
               children: [
                 Text(
                   'DAILY',
                   style: TextStyle(
-                    fontSize: 10,
+                    fontSize: compact ? 9 : 10,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.4,
                     color: colors.textSecondary,
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 4),
                 Expanded(
                   child: Text(
                     hint,
                     textAlign: TextAlign.right,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 9, color: colors.textMuted),
+                    style: TextStyle(
+                      fontSize: compact ? 8 : 9,
+                      color: colors.textMuted,
+                    ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 6),
+            SizedBox(height: compact ? 4 : 6),
             DecoratedBox(
               decoration: BoxDecoration(
                 color: colors.surface,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(compact ? 12 : 14),
                 border: Border.all(color: colors.border),
               ),
               child: SizedBox(
                 height: panelH,
                 child: Padding(
-                  padding: const EdgeInsets.all(6),
+                  padding: EdgeInsets.all(compact ? 4 : 6),
                   child: bars.isEmpty
                       ? Center(
                           child: Text(
@@ -120,37 +132,42 @@ class DailySpendBarChart extends StatelessWidget {
                           scrollDirection: Axis.horizontal,
                           itemCount: bars.length,
                           separatorBuilder: (_, _) =>
-                              const SizedBox(width: 6),
+                              SizedBox(width: compact ? 4 : 6),
                           itemBuilder: (context, i) {
                             final bar = bars[i];
                             return SizedBox(
-                              width: 40,
+                              width: barWidth,
                               child: LayoutBuilder(
                                 builder: (context, box) {
-                                  // Reserve little for labels so the column fills height.
-                                  const labelBudget = 22.0;
-                                  final barMax = (box.maxHeight - labelBudget)
-                                      .clamp(48.0, 280.0);
+                                  final labelBudget = compact ? 26.0 : 22.0;
+                                  final minBar = compact ? 10.0 : 28.0;
+                                  final barMax = math.max(
+                                    minBar,
+                                    box.maxHeight - labelBudget,
+                                  );
                                   final barH = (barMax * bar.heightRatio)
-                                      .clamp(28.0, barMax);
+                                      .clamp(minBar, barMax);
                                   final spentH = barH * bar.fillRatio;
                                   return Column(
                                     mainAxisAlignment: MainAxisAlignment.end,
+                                    mainAxisSize: MainAxisSize.max,
                                     children: [
                                       Text(
                                         bar.topLabel,
                                         maxLines: 1,
+                                        overflow: TextOverflow.clip,
                                         style: TextStyle(
-                                          fontSize: 8,
+                                          fontSize: compact ? 7 : 8,
+                                          height: 1.0,
                                           fontWeight: FontWeight.w600,
                                           color: bar.over
                                               ? colors.error
                                               : colors.textMuted,
                                         ),
                                       ),
-                                      const SizedBox(height: 2),
+                                      SizedBox(height: compact ? 1 : 2),
                                       SizedBox(
-                                        width: 22,
+                                        width: stemW,
                                         height: barH,
                                         child: ClipRRect(
                                           borderRadius:
@@ -171,7 +188,7 @@ class DailySpendBarChart extends StatelessWidget {
                                                     colors,
                                                   ),
                                                   child: SizedBox(
-                                                    width: 22,
+                                                    width: stemW,
                                                     height: spentH,
                                                   ),
                                                 ),
@@ -180,12 +197,14 @@ class DailySpendBarChart extends StatelessWidget {
                                           ),
                                         ),
                                       ),
-                                      const SizedBox(height: 2),
+                                      SizedBox(height: compact ? 1 : 2),
                                       Text(
                                         bar.shortLabel,
                                         maxLines: 1,
+                                        overflow: TextOverflow.clip,
                                         style: TextStyle(
-                                          fontSize: 8,
+                                          fontSize: compact ? 7 : 8,
+                                          height: 1.0,
                                           fontWeight: FontWeight.w500,
                                           color: colors.textSecondary,
                                         ),

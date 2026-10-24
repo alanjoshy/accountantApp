@@ -65,23 +65,26 @@ class CategorySpendPie extends StatelessWidget {
         ),
     ];
 
-    final size = compact ? 112.0 : 160.0;
+    final size = compact ? 96.0 : 160.0;
 
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colors.surfaceElevated,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(compact ? 14 : 16),
         border: Border.all(color: colors.border),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: EdgeInsets.all(compact ? 8 : 12),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               'Category spending',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 13,
+                fontSize: compact ? 12 : 13,
                 fontWeight: FontWeight.w600,
                 color: colors.textPrimary,
               ),
@@ -90,13 +93,21 @@ class CategorySpendPie extends StatelessWidget {
               compact
                   ? 'Share of expenses'
                   : 'Share of expenses · balance ${format(balance)}',
-              style: TextStyle(fontSize: 11, color: colors.textMuted),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: compact ? 10 : 11,
+                color: colors.textMuted,
+              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             if (rows.isEmpty || expense <= 0)
               Text(
                 'No expenses in this period to chart.',
-                style: TextStyle(fontSize: 12, color: colors.textMuted),
+                style: TextStyle(
+                  fontSize: compact ? 11 : 12,
+                  color: colors.textMuted,
+                ),
               )
             else
               Center(
@@ -112,14 +123,16 @@ class CategorySpendPie extends StatelessWidget {
                           Text(
                             'Spent',
                             style: TextStyle(
-                              fontSize: 10,
+                              fontSize: compact ? 9 : 10,
                               color: colors.textMuted,
                             ),
                           ),
                           Text(
                             format(expense),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: compact ? 11 : 12,
                               fontWeight: FontWeight.w800,
                               color: colors.textPrimary,
                             ),
