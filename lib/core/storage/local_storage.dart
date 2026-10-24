@@ -40,6 +40,13 @@ class LocalStorage {
 
   static Future<bool> remove(String key) => _p.remove(key);
 
+  /// Removes each key that exists. Ignores missing keys.
+  static Future<void> removeAll(Iterable<String> keys) async {
+    for (final key in keys) {
+      await _p.remove(key);
+    }
+  }
+
   /// Reads a bool, also accepting legacy string flags (`'1'` / `'true'`).
   static bool? getBool(String key) {
     try {

@@ -187,4 +187,10 @@ class NotificationInboxStore extends ChangeNotifier {
     notifyListeners();
     await _persist();
   }
+
+  Future<void> clearAll() async {
+    _items = const [];
+    notifyListeners();
+    await _persist();
+  }
 }

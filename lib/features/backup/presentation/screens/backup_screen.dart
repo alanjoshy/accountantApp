@@ -13,6 +13,8 @@ import 'package:share_plus/share_plus.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_spacing.dart';
 import '../../../../core/widgets/app_toast.dart';
+import '../../../auth/data/app_lock_store.dart';
+import '../../../auth/presentation/widgets/unlock_sheet.dart';
 import '../../domain/backup_service.dart';
 import '../../domain/backup_snapshot.dart';
 
@@ -128,6 +130,108 @@ class _BackupScreenState extends State<BackupScreen> {
     }
   }
 
+  Future<bool> _confirmPassword() async {
+    if (AppLockStore.instance.hasPin) {
+      final ok = await showUnlockSheet(
+        context,
+        title: 'Enter PIN',
+        subtitle: 'Confirm with your PIN to delete all data.',
+      );
+      return ok == true;
+    }
+
+    final controller = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final colors = AppColors.of(ctx);
+        return AlertDialog(
+          title: const Text('Type DELETE to confirm'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'No PIN is set. Type DELETE to wipe all money data.',
+                style: TextStyle(fontSize: 13, color: colors.textMuted),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  hintText: 'DELETE',
+                  border: OutlineInputBorder(),
+                ),
+                onSubmitted: (value) {
+                  Navigator.pop(
+                    ctx,
+                    value.trim().toUpperCase() == 'DELETE',
+                  );
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(
+                  ctx,
+                  controller.text.trim().toUpperCase() == 'DELETE',
+                );
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: colors.error,
+              ),
+              child: const Text('Continue'),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+    return confirmed == true;
+  }
+
+  Future<void> _wipe() async {
+    if (_busy) return;
+    HapticFeedback.selectionClick();
+
+    final ok = await AppToast.confirm(
+      context,
+      title: 'Delete all data?',
+      message:
+          'This permanently removes transactions, budgets, accounts, jars, debts, scheduled payments, planned reserves, and settings. Default accounts and categories will be recreated. Your PIN, theme, and currency stay. This can’t be undone.',
+      confirmLabel: 'Delete everything',
+    );
+    if (!ok || !mounted) return;
+
+    final authenticated = await _confirmPassword();
+    if (!authenticated || !mounted) return;
+
+    setState(() => _busy = true);
+    try {
+      await BackupService.wipeAllData();
+      if (!mounted) return;
+      HapticFeedback.heavyImpact();
+      AppToast.success(context, 'All data cleared. Fresh start ready.');
+    } catch (_) {
+      if (!mounted) return;
+      AppToast.show(
+        context,
+        'Couldn’t delete data. Try again.',
+        tone: AppToastTone.error,
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
@@ -177,6 +281,48 @@ class _BackupScreenState extends State<BackupScreen> {
                   onTap: _export,
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'Danger zone',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: colors.error,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Start over with empty accounts and categories. Export a backup first if you might need the data later.',
+            style: TextStyle(fontSize: 12, height: 1.35, color: colors.textMuted),
+          ),
+          const SizedBox(height: 10),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: colors.surfaceElevated,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: colors.error.withValues(alpha: 0.35),
+              ),
+            ),
+            child: ListTile(
+              leading: Icon(Icons.delete_forever_rounded, color: colors.error),
+              title: Text(
+                'Delete all data',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: colors.error,
+                ),
+              ),
+              subtitle: Text(
+                AppLockStore.instance.hasPin
+                    ? 'Confirmation, then PIN required'
+                    : 'Confirmation, then type DELETE',
+                style: TextStyle(fontSize: 12, color: colors.textMuted),
+              ),
+              enabled: !_busy,
+              onTap: _wipe,
             ),
           ),
           if (_busy) ...[

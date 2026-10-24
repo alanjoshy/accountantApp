@@ -3,15 +3,35 @@
 import '../../../core/constants/app_constants.dart';
 import '../../../core/storage/local_storage.dart';
 import '../../accounts/data/account_store.dart';
+import '../../accounts/domain/account_style.dart';
+import '../../auth/domain/sensitive_access_session.dart';
 import '../../budgets/data/budget_store.dart';
 import '../../debts/data/debt_store.dart';
 import '../../jars/data/jar_store.dart';
-import '../../reminders/domain/reminder_sync.dart';
 import '../../planned/data/planned_reserve_store.dart';
+import '../../reminders/data/notification_inbox_store.dart';
+import '../../reminders/domain/reminder_sync.dart';
 import '../../scheduled/data/scheduled_payment_store.dart';
+import '../../settings/data/app_settings.dart';
 import '../../settings/data/app_settings_store.dart';
 import '../../transactions/data/transaction_store.dart';
 import 'backup_snapshot.dart';
+
+/// Prefs keys wiped on factory reset (keeps PIN / theme / currency).
+const _wipeDataKeys = <String>[
+  AppConstants.transactionsKey,
+  AppConstants.budgetsKey,
+  AppConstants.budgetsSeededKey,
+  AppConstants.budgetsPermanentKey,
+  AppConstants.jarsKey,
+  AppConstants.appSettingsKey,
+  AppConstants.accountsKey,
+  AppConstants.accountsSeededKey,
+  AppConstants.debtsKey,
+  AppConstants.scheduledPaymentsKey,
+  AppConstants.plannedReservesKey,
+  AppConstants.notificationInboxKey,
+];
 
 class BackupService {
   BackupService._();
@@ -65,5 +85,39 @@ class BackupService {
     final snapshot = parseBackupJson(text);
     await restoreSnapshot(snapshot);
     return snapshot;
+  }
+
+  /// Wipe money data and re-seed a fresh empty workspace.
+  /// Keeps app lock PIN, theme, and currency preferences.
+  static Future<void> wipeAllData() async {
+    await LocalStorage.removeAll(_wipeDataKeys);
+
+    await TransactionStore.instance.replaceAll(const []);
+    await BudgetStore.instance.replaceAll(const []);
+    await JarStore.instance.replaceAll(const []);
+    await DebtStore.instance.replaceAll(const []);
+    await ScheduledPaymentStore.instance.replaceAll(const []);
+    await PlannedReserveStore.instance.replaceAll(const []);
+    await AccountStore.instance.replaceAll(const []);
+    await NotificationInboxStore.instance.clearAll();
+    await AppSettingsStore.instance.replace(const AppSettings());
+
+    await AccountStore.instance.ensureSeeded();
+    await BudgetStore.instance.ensureDefaultCategories();
+    await BudgetStore.instance.migrateToPermanentCategories();
+    await BudgetStore.instance.syncCycles();
+
+    if (AppSettingsStore.instance.defaultAccountId == null &&
+        AccountStore.instance.accounts.isNotEmpty) {
+      final bank = AccountStore.instance.accounts
+          .where((a) => a.kind == AccountKind.bank)
+          .firstOrNull;
+      await AppSettingsStore.instance.setDefaultAccountId(
+        bank?.id ?? AccountStore.instance.accounts.first.id,
+      );
+    }
+
+    SensitiveAccessSession.instance.lock();
+    await ReminderSync.refresh();
   }
 }

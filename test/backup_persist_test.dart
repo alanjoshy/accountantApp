@@ -1,7 +1,10 @@
 import 'package:accountant/app/bootstrap.dart';
 import 'package:accountant/core/constants/app_constants.dart';
 import 'package:accountant/core/storage/local_storage.dart';
+import 'package:accountant/features/accounts/data/account_store.dart';
 import 'package:accountant/features/backup/domain/backup_service.dart';
+import 'package:accountant/features/budgets/data/budget_store.dart';
+import 'package:accountant/features/settings/data/app_settings_store.dart';
 import 'package:accountant/features/transactions/data/transaction_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -90,5 +93,19 @@ void main() {
     await bootstrap();
 
     expect(TransactionStore.instance.transactions.single.title, 'Coffee');
+  });
+
+  test('wipeAllData clears transactions and reseeds accounts', () async {
+    await BackupService.restoreFromJsonText(_backupJson);
+    await AppSettingsStore.instance.setMonthlyIncome(42000);
+    expect(TransactionStore.instance.transactions, isNotEmpty);
+    expect(AppSettingsStore.instance.monthlyIncome, 42000);
+
+    await BackupService.wipeAllData();
+
+    expect(TransactionStore.instance.transactions, isEmpty);
+    expect(AppSettingsStore.instance.monthlyIncome, 0);
+    expect(AccountStore.instance.accounts, isNotEmpty);
+    expect(BudgetStore.instance.budgets, isNotEmpty);
   });
 }

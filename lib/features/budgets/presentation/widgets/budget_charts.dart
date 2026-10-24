@@ -88,34 +88,20 @@ class BudgetCharts extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final sideBySide = constraints.maxWidth >= 520;
-            final allocation = _AllocationPie(
-              rows: rows,
-              monthlyIncome: monthlyIncome,
-            );
-            final usage = _UsagePanel(rows: rows);
-            if (!sideBySide) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  allocation,
-                  const SizedBox(height: 10),
-                  usage,
-                ],
-              );
-            }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: allocation),
-                const SizedBox(width: 10),
-                Expanded(child: usage),
-              ],
-            );
-          },
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: _AllocationPie(
+                rows: rows,
+                monthlyIncome: monthlyIncome,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _UsagePanel(rows: rows),
+            ),
+          ],
         ),
         const SizedBox(height: 10),
         _BudgetBalanceStrip(
@@ -207,16 +193,16 @@ class _AllocationPieState extends State<_AllocationPie> {
       }
     }
 
-    const size = 132.0;
+    const size = 96.0;
 
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colors.surfaceElevated,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: colors.border),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -224,21 +210,21 @@ class _AllocationPieState extends State<_AllocationPie> {
             Text(
               'Allocation',
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: colors.textPrimary,
               ),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 1),
             Text(
               leftover > 0.009
-                  ? '${compact(leftover)} left to allocate'
-                  : 'Income split by category',
-              maxLines: 2,
+                  ? '${compact(leftover)} left'
+                  : 'Income split',
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 11, color: colors.textMuted),
+              style: TextStyle(fontSize: 10, color: colors.textMuted),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 6),
             Center(
               child: SizedBox(
                 width: size,
@@ -277,11 +263,10 @@ class _AllocationPieState extends State<_AllocationPie> {
                               overflow: TextOverflow.ellipsis,
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                fontSize: 9,
+                                fontSize: 8,
                                 color: colors.textMuted,
                               ),
                             ),
-                            const SizedBox(height: 2),
                             Text(
                               active == null
                                   ? compact(allocated)
@@ -290,7 +275,7 @@ class _AllocationPieState extends State<_AllocationPie> {
                               overflow: TextOverflow.ellipsis,
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                fontSize: active == null ? 12 : 16,
+                                fontSize: active == null ? 11 : 14,
                                 fontWeight: FontWeight.w800,
                                 color: colors.textPrimary,
                               ),
@@ -303,59 +288,47 @@ class _AllocationPieState extends State<_AllocationPie> {
                 ),
               ),
             ),
-            const SizedBox(height: 8),
-            for (final s in painted.take(6))
+            const SizedBox(height: 6),
+            for (final s in painted.take(4))
               InkWell(
                 onTap: () {
                   HapticFeedback.selectionClick();
                   setState(() => _active = _active == s.key ? null : s.key);
                 },
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(6),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  padding: const EdgeInsets.symmetric(vertical: 2),
                   child: Row(
                     children: [
-                      _ColorIconMark(color: s.color, icon: s.icon),
-                      const SizedBox(width: 6),
+                      _ColorIconMark(color: s.color, icon: s.icon, compact: true),
+                      const SizedBox(width: 4),
                       Expanded(
                         child: Text(
                           s.label,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 10,
                             color: colors.textSecondary,
                           ),
                         ),
                       ),
                       Text(
-                        compact(s.amount),
+                        '${(s.share * 100).round()}%',
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 10,
                           fontWeight: FontWeight.w600,
                           color: colors.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      SizedBox(
-                        width: 28,
-                        child: Text(
-                          '${(s.share * 100).round()}%',
-                          textAlign: TextAlign.right,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: colors.textMuted,
-                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
-            if (painted.length > 6)
+            if (painted.length > 4)
               Text(
-                '+${painted.length - 6} more',
-                style: TextStyle(fontSize: 10, color: colors.textMuted),
+                '+${painted.length - 4} more',
+                style: TextStyle(fontSize: 9, color: colors.textMuted),
               ),
           ],
         ),
@@ -401,11 +374,11 @@ class _UsagePanel extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colors.surfaceElevated,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: colors.border),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -413,86 +386,80 @@ class _UsagePanel extends StatelessWidget {
             Text(
               'Usage',
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: colors.textPrimary,
               ),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 1),
             Text(
               rows.length < 2 ? 'Spent vs allocated' : 'Spider · vs budget',
-              style: TextStyle(fontSize: 11, color: colors.textMuted),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 10, color: colors.textMuted),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 6),
             if (rows.length < 2)
               _UsageBars(rows: rows)
             else ...[
               Center(
                 child: SizedBox(
-                  width: 140,
-                  height: 140,
+                  width: 100,
+                  height: 100,
                   child: CustomPaint(
                     painter: _RadarPainter(rows: rows, colors: colors),
                   ),
                 ),
               ),
               const SizedBox(height: 4),
-              Wrap(
-                alignment: WrapAlignment.center,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 8,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 14,
-                        height: 1.5,
-                        color: colors.accent.withValues(alpha: 0.55),
-                      ),
-                      Text(
-                        ' 100%',
-                        style: TextStyle(fontSize: 10, color: colors.textMuted),
-                      ),
-                    ],
+                  Container(
+                    width: 10,
+                    height: 1.5,
+                    color: colors.accent.withValues(alpha: 0.55),
                   ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: colors.accent.withValues(alpha: 0.3),
-                          border: Border.all(color: colors.accent),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                      Text(
-                        ' Spent',
-                        style: TextStyle(fontSize: 10, color: colors.textMuted),
-                      ),
-                    ],
+                  Text(
+                    ' 100%  ',
+                    style: TextStyle(fontSize: 9, color: colors.textMuted),
+                  ),
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: colors.accent.withValues(alpha: 0.3),
+                      border: Border.all(color: colors.accent, width: 0.8),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Text(
+                    ' Spent',
+                    style: TextStyle(fontSize: 9, color: colors.textMuted),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Divider(height: 1, color: colors.border),
               const SizedBox(height: 6),
-              for (final r in rows.take(6))
+              Divider(height: 1, color: colors.border),
+              const SizedBox(height: 4),
+              for (final r in rows.take(4))
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  padding: const EdgeInsets.symmetric(vertical: 2),
                   child: Row(
                     children: [
-                      _ColorIconMark(color: r.color, icon: r.icon),
-                      const SizedBox(width: 6),
+                      _ColorIconMark(
+                        color: r.color,
+                        icon: r.icon,
+                        compact: true,
+                      ),
+                      const SizedBox(width: 4),
                       Expanded(
                         child: Text(
                           r.category,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 10,
                             color: colors.textSecondary,
                           ),
                         ),
@@ -500,7 +467,7 @@ class _UsagePanel extends StatelessWidget {
                       Text(
                         '${r.limit > 0 ? ((r.spent / r.limit) * 100).round() : 0}%',
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 10,
                           fontWeight: FontWeight.w600,
                           color: r.limit > 0 && r.spent > r.limit
                               ? colors.error
@@ -510,10 +477,10 @@ class _UsagePanel extends StatelessWidget {
                     ],
                   ),
                 ),
-              if (rows.length > 6)
+              if (rows.length > 4)
                 Text(
-                  '+${rows.length - 6} more',
-                  style: TextStyle(fontSize: 10, color: colors.textMuted),
+                  '+${rows.length - 4} more',
+                  style: TextStyle(fontSize: 9, color: colors.textMuted),
                 ),
             ],
           ],
@@ -953,30 +920,36 @@ class _Metric extends StatelessWidget {
 }
 
 class _ColorIconMark extends StatelessWidget {
-  const _ColorIconMark({required this.color, this.icon});
+  const _ColorIconMark({
+    required this.color,
+    this.icon,
+    this.compact = false,
+  });
 
   final Color color;
   final IconData? icon;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
+    final size = compact ? 14.0 : 18.0;
     return Container(
-      width: 18,
-      height: 18,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(compact ? 4 : 6),
         border: Border.all(color: color.withValues(alpha: 0.45)),
       ),
       child: icon == null
           ? Center(
               child: Container(
-                width: 6,
-                height: 6,
+                width: compact ? 5 : 6,
+                height: compact ? 5 : 6,
                 decoration: BoxDecoration(color: color, shape: BoxShape.circle),
               ),
             )
-          : Icon(icon, size: 11, color: color),
+          : Icon(icon, size: compact ? 9 : 11, color: color),
     );
   }
 }
@@ -1045,7 +1018,8 @@ class _RadarPainter extends CustomPainter {
     if (n < 2) return;
     final cx = size.width / 2;
     final cy = size.height / 2;
-    final maxR = math.min(size.width, size.height) / 2 - 22;
+    final pad = size.shortestSide < 120 ? 16.0 : 22.0;
+    final maxR = math.min(size.width, size.height) / 2 - pad;
 
     final grid = Paint()
       ..color = colors.border
@@ -1117,32 +1091,36 @@ class _RadarPainter extends CustomPainter {
         ..strokeJoin = StrokeJoin.round,
     );
 
+    final compactChart = size.shortestSide < 120;
     final labelStyle = TextStyle(
-      fontSize: 9,
+      fontSize: compactChart ? 7 : 9,
       fontWeight: FontWeight.w600,
       color: colors.textMuted,
     );
+    final dotR = compactChart ? 2.5 : 3.5;
     for (var i = 0; i < n; i++) {
       final r = rows[i];
       final usage = r.limit > 0 ? r.spent / r.limit : 0.0;
       final p = points[i];
       canvas.drawCircle(
         p,
-        3.5,
+        dotR,
         Paint()..color = usage > 1 ? colors.error : r.color,
       );
       canvas.drawCircle(
         p,
-        3.5,
+        dotR,
         Paint()
           ..color = colors.surfaceElevated
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5,
+          ..strokeWidth = 1.2,
       );
 
-      final labelPos = _polar(cx, cy, maxR + 14, (360 / n) * i);
-      final label = r.category.length > 8
-          ? '${r.category.substring(0, 7)}…'
+      final labelPos =
+          _polar(cx, cy, maxR + (compactChart ? 10 : 14), (360 / n) * i);
+      final maxChars = compactChart ? 5 : 8;
+      final label = r.category.length > maxChars
+          ? '${r.category.substring(0, maxChars - 1)}…'
           : r.category;
       final tp = TextPainter(
         text: TextSpan(text: label, style: labelStyle),
